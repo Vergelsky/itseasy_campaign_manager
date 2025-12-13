@@ -4,6 +4,7 @@ from django.shortcuts import render, get_object_or_404, redirect
 from django.http import JsonResponse
 from django.contrib import messages
 from django.db import transaction
+from django.db.models import Count, Case, When, IntegerField
 from .models import Campaign, Flow, Offer, FlowOffer
 from .services import KeitaroSyncService, ShareCalculator, KeitaroAPIException
 
@@ -60,7 +61,10 @@ class CampaignDetailView(DetailView):
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         # Получаем потоки с офферами
-        flows = self.object.flows.prefetch_related('flow_offers__offer').order_by('position')
+        # Сначала сортируем по наличию офферов (с офферами - в начале), затем по position
+        flows = self.object.flows.prefetch_related('flow_offers__offer').annotate(
+            offers_count=Count('flow_offers')
+        ).order_by('-offers_count', 'position')
         context['flows'] = flows
         return context
 

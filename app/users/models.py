@@ -1,20 +1,23 @@
 from django.db import models
-from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, PermissionsMixin
+from django.contrib.auth.models import AbstractUser, BaseUserManager, PermissionsMixin
 
 
 class UserManager(BaseUserManager):
     """Менеджер для кастомной модели User"""
     
-    def create_user(self, api_key, **extra_fields):
+    def create_user(self, api_key, password=None, **extra_fields):
         """Создание обычного пользователя"""
         if not api_key:
             raise ValueError('API ключ обязателен')
         
         user = self.model(api_key=api_key, **extra_fields)
+        # ВАЖНО: устанавливаем пароль через set_password для правильного хэширования
+        if password:
+            user.set_password(password)
         user.save(using=self._db)
         return user
     
-    def create_superuser(self, api_key, **extra_fields):
+    def create_superuser(self, api_key, password=None, **extra_fields):
         """Создание суперпользователя"""
         extra_fields.setdefault('is_staff', True)
         extra_fields.setdefault('is_superuser', True)
@@ -25,14 +28,25 @@ class UserManager(BaseUserManager):
         if extra_fields.get('is_superuser') is not True:
             raise ValueError('Superuser must have is_superuser=True.')
         
-        return self.create_user(api_key, **extra_fields)
+        # ВАЖНО: передаем password в create_user
+        return self.create_user(api_key, password=password, **extra_fields)
 
 
-class User(AbstractBaseUser, PermissionsMixin):
+class User(AbstractUser, PermissionsMixin):
     """
     Кастомная модель пользователя.
     Аутентификация через API ключ Keitaro (без пароля).
     """
+    # ПЕРЕОПРЕДЕЛЯЕМ username чтобы убрать уникальность и сделать необязательным
+    username = models.CharField(
+        max_length=150,
+        unique=False,  # Убираем уникальность
+        blank=True,    # Разрешаем пустое значение
+        null=True,     # Разрешаем NULL в базе
+        verbose_name='Имя пользователя',
+        help_text='Не используется для входа'
+    )
+    
     api_key = models.CharField(
         max_length=255,
         unique=True,
@@ -45,9 +59,7 @@ class User(AbstractBaseUser, PermissionsMixin):
         null=True,
         verbose_name='Последняя посещённая страница'
     )
-    is_active = models.BooleanField(default=True, verbose_name='Активен')
-    is_staff = models.BooleanField(default=False, verbose_name='Персонал')
-    is_superuser = models.BooleanField(default=False, verbose_name='Суперпользователь')
+
     created_at = models.DateTimeField(auto_now_add=True, verbose_name='Дата создания')
     updated_at = models.DateTimeField(auto_now=True, verbose_name='Дата обновления')
     
@@ -62,7 +74,7 @@ class User(AbstractBaseUser, PermissionsMixin):
         db_table = 'users'
     
     def __str__(self):
-        return f'User {self.id} ({self.api_key[:10]}...)'
+        return f'User {self.id} ({self.api_key[:10]}...)' if self.api_key else f'User {self.id}'
     
     def get_full_name(self):
         return f'User {self.id}'

@@ -71,9 +71,15 @@ docker-compose up -d --build
 # Применить миграции
 docker-compose exec web python app/manage.py migrate
 
-# (Опционально) Создать суперпользователя для Django Admin
-docker-compose exec web python app/manage.py createsuperuser --api_key your_keitaro_api_key --noinput
+# Создать суперпользователя для Django Admin
+docker-compose exec web python app/manage.py shell -c "from users.models import User; user = User.objects.create_superuser(api_key='admin', password='admin123'); print('Создан суперпользователь: admin / admin123')"
 ```
+
+**Учётные данные:**
+- **Основное приложение** (http://localhost:8000): API ключ - любой валидный ключ из Keitaro
+- **Django Admin** (http://localhost:8000/admin/):
+  - Username: `admin`
+  - Password: `admin123`
 
 ### 4. Запуск локально (без Docker)
 
@@ -88,11 +94,15 @@ cd app
 $env:POSTGRES_HOST=''; python manage.py migrate
 
 # Создать суперпользователя
-$env:POSTGRES_HOST=''; python manage.py createsuperuser --api_key your_keitaro_api_key --noinput
+$env:POSTGRES_HOST=''; python manage.py shell -c "from users.models import User; user = User.objects.create_superuser(api_key='admin', password='admin123'); print('Создан суперпользователь: admin / admin123')"
 
 # Запустить сервер
 $env:POSTGRES_HOST=''; python manage.py runserver
 ```
+
+**Учётные данные:**
+- **Основное приложение**: любой валидный API ключ Keitaro
+- **Django Admin**: `admin` / `admin123`
 
 ### 5. Открыть в браузере
 
@@ -137,7 +147,26 @@ http://localhost:8000
 
 Доступен по адресу: `http://localhost:8000/admin/`
 
-Используйте API ключ созданного суперпользователя для входа.
+**Учётные данные по умолчанию:**
+- Username: `admin` (или `admin_test_key`)
+- Password: `admin123` (или `test123` для admin_test_key)
+
+**Как создать нового суперпользователя:**
+
+```bash
+# Через Docker
+docker-compose exec web python app/manage.py shell -c "from users.models import User; user = User.objects.create_superuser(api_key='mykey', password='mypassword'); print('Создан:', user.api_key)"
+
+# Локально
+cd app
+$env:POSTGRES_HOST=''
+python manage.py shell -c "from users.models import User; user = User.objects.create_superuser(api_key='mykey', password='mypassword'); print('Создан:', user.api_key)"
+```
+
+**Важно:** 
+- `api_key` используется как username для Django Admin
+- Для входа в основное приложение нужен только API ключ (без пароля)
+- Для Django Admin нужны и api_key (как username) и password
 
 ## Структура проекта
 
