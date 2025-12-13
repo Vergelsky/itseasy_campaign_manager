@@ -347,6 +347,7 @@ class KeitaroSyncService:
                     campaign=campaign,
                     defaults={
                         'name': stream_data.get('name', ''),
+                        'type': stream_data.get('type', 'offers'),
                         'position': stream_data.get('position', 0),
                         'state': stream_data.get('state', 'active'),
                     }

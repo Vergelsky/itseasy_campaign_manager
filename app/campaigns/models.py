@@ -44,6 +44,7 @@ class Flow(models.Model):
         verbose_name='Кампания'
     )
     name = models.CharField(max_length=255, verbose_name='Название')
+    type = models.CharField(max_length=50, default='offers', verbose_name='Тип потока')
     position = models.IntegerField(default=0, verbose_name='Позиция')
     state = models.CharField(max_length=50, default='active', verbose_name='Состояние')
     synced_at = models.DateTimeField(auto_now=True, verbose_name='Синхронизировано')

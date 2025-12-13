@@ -35,14 +35,15 @@
 {% if flows %}
 <div class="space-y-6">
     {% for flow in flows %}
-    <div class="bg-white shadow-md rounded-lg overflow-hidden flow-container" data-flow-id="{{ flow.id }}">
+    <div class="bg-white shadow-md rounded-lg overflow-hidden flow-container" data-flow-id="{{ flow.id }}" data-flow-type="{{ flow.type }}">
         <!-- Заголовок потока -->
         <div class="bg-gray-50 px-6 py-4 border-b border-gray-200">
             <div class="flex justify-between items-center">
                 <div>
                     <h3 class="text-lg font-semibold text-gray-900">{{ flow.name }}</h3>
-                    <p class="text-sm text-gray-500">Position: {{ flow.position }} | State: {{ flow.state }}</p>
+                    <p class="text-sm text-gray-500">Position: {{ flow.position }} | Type: {{ flow.type }} | State: {{ flow.state }}</p>
                 </div>
+                {% if flow.type != 'regular' %}
                 <div class="space-x-2 flow-actions" style="display: none;">
                     <button class="push-flow-btn bg-green-600 hover:bg-green-700 text-white font-bold py-1 px-3 rounded text-sm">
                         Push to Keitaro
@@ -51,9 +52,11 @@
                         Cancel
                     </button>
                 </div>
+                {% endif %}
             </div>
             
-            <!-- Форма добавления оффера -->
+            <!-- Форма добавления оффера (только для type != regular) -->
+            {% if flow.type != 'regular' %}
             <div class="mt-4">
                 <div class="flex space-x-2">
                     <input type="text" 
@@ -66,9 +69,15 @@
                     </button>
                 </div>
             </div>
+            {% else %}
+            <div class="mt-4">
+                <p class="text-sm text-gray-500 italic">Этот поток имеет тип "regular" и не поддерживает управление офферами</p>
+            </div>
+            {% endif %}
         </div>
         
-        <!-- Таблица офферов -->
+        <!-- Таблица офферов (только для type != regular) -->
+        {% if flow.type != 'regular' %}
         <div class="overflow-x-auto">
             <table class="min-w-full divide-y divide-gray-200">
                 <thead class="bg-gray-50">
@@ -123,6 +132,7 @@
                 </tbody>
             </table>
         </div>
+        {% endif %}
     </div>
     {% endfor %}
 </div>

@@ -30,15 +30,15 @@ class CampaignAdmin(admin.ModelAdmin):
 class FlowAdmin(admin.ModelAdmin):
     """Админ-панель для модели Flow"""
     
-    list_display = ('id', 'name', 'campaign', 'keitaro_id', 'position', 'state', 'synced_at')
-    list_filter = ('state', 'campaign__user', 'synced_at')
+    list_display = ('id', 'name', 'campaign', 'keitaro_id', 'type', 'position', 'state', 'synced_at')
+    list_filter = ('type', 'state', 'campaign__user', 'synced_at')
     search_fields = ('name', 'keitaro_id', 'campaign__name')
     readonly_fields = ('keitaro_id', 'synced_at', 'created_at')
     list_per_page = 50
     
     fieldsets = (
         ('Основная информация', {
-            'fields': ('campaign', 'name', 'position', 'state')
+            'fields': ('campaign', 'name', 'type', 'position', 'state')
         }),
         ('Keitaro', {
             'fields': ('keitaro_id', 'synced_at')

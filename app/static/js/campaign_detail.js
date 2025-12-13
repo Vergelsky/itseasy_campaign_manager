@@ -115,6 +115,15 @@ $(document).ready(function() {
     // Добавление оффера
     $('.add-offer-btn').on('click', function() {
         const flowId = $(this).data('flow-id');
+        const flowContainer = $(`.flow-container[data-flow-id="${flowId}"]`);
+        const flowType = flowContainer.data('flow-type');
+        
+        // Проверяем тип потока
+        if (flowType === 'regular') {
+            showToast('Потоки типа "regular" не поддерживают управление офферами', 'warning');
+            return;
+        }
+        
         const input = $(`.offer-autocomplete[data-flow-id="${flowId}"]`);
         const offerId = input.data('selected-offer-id') || selectedOfferId;
         
