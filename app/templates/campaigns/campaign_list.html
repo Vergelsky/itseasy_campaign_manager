@@ -1,0 +1,191 @@
+{% extends 'base.html' %}
+
+{% block title %}Кампании - Campaign Manager{% endblock %}
+
+{% block content %}
+<div class="mb-6 flex justify-between items-center">
+    <h2 class="text-2xl font-bold text-gray-900">Рекламные кампании</h2>
+    <button id="sync-campaigns-btn" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded">
+        Синхронизировать с Keitaro
+    </button>
+</div>
+
+{% if campaigns %}
+<div class="bg-white shadow-md rounded-lg overflow-hidden">
+    <table class="min-w-full divide-y divide-gray-200">
+        <thead class="bg-gray-50">
+            <tr>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">ID</th>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Название</th>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Алиас</th>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Потоки</th>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Клики</th>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Конверсии</th>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">CR (%)</th>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Доход</th>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Расход</th>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Прибыль</th>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">ROI (%)</th>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Действия</th>
+            </tr>
+        </thead>
+        <tbody class="bg-white divide-y divide-gray-200">
+            {% for campaign in campaigns %}
+            <tr class="hover:bg-gray-50" data-campaign-id="{{ campaign.id }}">
+                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{{ campaign.keitaro_id }}</td>
+                <td class="px-6 py-4 whitespace-nowrap">
+                    <a href="{% url 'campaigns:campaign_detail' campaign.pk %}" class="text-blue-600 hover:text-blue-900 font-medium">
+                        {{ campaign.name }}
+                    </a>
+                </td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{{ campaign.alias }}</td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{{ campaign.flows_count }}</td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 stat-clicks">-</td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 stat-conversions">-</td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 stat-cr">-</td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 stat-revenue">-</td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 stat-cost">-</td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 stat-profit">-</td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 stat-roi">-</td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                    <a href="{% url 'campaigns:campaign_detail' campaign.pk %}" class="text-blue-600 hover:text-blue-900">
+                        Открыть
+                    </a>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<!-- Пагинация -->
+{% if is_paginated %}
+<div class="mt-6 flex justify-center">
+    <nav class="relative z-0 inline-flex rounded-md shadow-sm -space-x-px">
+        {% if page_obj.has_previous %}
+        <a href="?page={{ page_obj.previous_page_number }}" class="relative inline-flex items-center px-2 py-2 rounded-l-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50">
+            Назад
+        </a>
+        {% endif %}
+        
+        <span class="relative inline-flex items-center px-4 py-2 border border-gray-300 bg-white text-sm font-medium text-gray-700">
+            Страница {{ page_obj.number }} из {{ page_obj.paginator.num_pages }}
+        </span>
+        
+        {% if page_obj.has_next %}
+        <a href="?page={{ page_obj.next_page_number }}" class="relative inline-flex items-center px-2 py-2 rounded-r-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50">
+            Вперёд
+        </a>
+        {% endif %}
+    </nav>
+</div>
+{% endif %}
+
+{% else %}
+<div class="bg-white shadow-md rounded-lg p-8 text-center">
+    <p class="text-gray-500 text-lg mb-4">Кампании не найдены</p>
+    <button id="sync-campaigns-btn-empty" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded">
+        Синхронизировать с Keitaro
+    </button>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block extra_js %}
+<script>
+$(document).ready(function() {
+    // Синхронизация кампаний
+    $('#sync-campaigns-btn, #sync-campaigns-btn-empty').on('click', function() {
+        const btn = $(this);
+        btn.prop('disabled', true).text('Синхронизация...');
+        
+        $.ajax({
+            url: '{% url "campaigns:sync_campaigns" %}',
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': '{{ csrf_token }}'
+            },
+            success: function(data) {
+                if (data.success) {
+                    alert(data.message);
+                    location.reload();
+                } else {
+                    alert('Ошибка: ' + data.error);
+                    btn.prop('disabled', false).text('Синхронизировать с Keitaro');
+                }
+            },
+            error: function(xhr) {
+                const error = xhr.responseJSON?.error || 'Неизвестная ошибка';
+                alert('Ошибка: ' + error);
+                btn.prop('disabled', false).text('Синхронизировать с Keitaro');
+            }
+        });
+    });
+    
+    // Загрузка статистики
+    function loadStats() {
+        const campaignIds = [];
+        $('tr[data-campaign-id]').each(function() {
+            campaignIds.push($(this).data('campaign-id'));
+        });
+        
+        if (campaignIds.length === 0) {
+            return;
+        }
+        
+        $.ajax({
+            url: '{% url "campaigns:campaign_stats" %}',
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': '{{ csrf_token }}'
+            },
+            data: {
+                'campaign_ids[]': campaignIds
+            },
+            success: function(data) {
+                if (data.success && data.stats) {
+                    // Обновляем статистику в таблице
+                    $.each(data.stats, function(campaignId, stats) {
+                        const row = $(`tr[data-campaign-id="${campaignId}"]`);
+                        row.find('.stat-clicks').text(stats.clicks || 0);
+                        row.find('.stat-conversions').text(stats.conversions || 0);
+                        row.find('.stat-cr').text((stats.cr || 0).toFixed(2));
+                        row.find('.stat-revenue').text('$' + (stats.revenue || 0).toFixed(2));
+                        row.find('.stat-cost').text('$' + (stats.cost || 0).toFixed(2));
+                        
+                        const profit = stats.profit || 0;
+                        const profitCell = row.find('.stat-profit');
+                        profitCell.text('$' + profit.toFixed(2));
+                        if (profit > 0) {
+                            profitCell.removeClass('text-gray-500').addClass('text-green-600 font-semibold');
+                        } else if (profit < 0) {
+                            profitCell.removeClass('text-gray-500').addClass('text-red-600 font-semibold');
+                        }
+                        
+                        const roi = stats.roi || 0;
+                        const roiCell = row.find('.stat-roi');
+                        roiCell.text(roi.toFixed(2));
+                        if (roi > 0) {
+                            roiCell.removeClass('text-gray-500').addClass('text-green-600 font-semibold');
+                        } else if (roi < 0) {
+                            roiCell.removeClass('text-gray-500').addClass('text-red-600 font-semibold');
+                        }
+                    });
+                    
+                    if (data.warning) {
+                        console.warn(data.warning);
+                    }
+                }
+            },
+            error: function(xhr) {
+                console.error('Не удалось загрузить статистику');
+            }
+        });
+    }
+    
+    // Загружаем статистику при загрузке страницы
+    loadStats();
+});
+</script>
+{% endblock %}
+

@@ -1,0 +1,145 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}{{ campaign.name }} - Campaign Manager{% endblock %}
+
+{% block content %}
+<div class="mb-6">
+    <div class="flex justify-between items-center">
+        <div>
+            <a href="{% url 'campaigns:campaign_list' %}" class="text-blue-600 hover:text-blue-900 text-sm mb-2 inline-block">
+                ← Назад к списку
+            </a>
+            <h2 class="text-2xl font-bold text-gray-900">{{ campaign.name }}</h2>
+            <p class="text-sm text-gray-500">ID: {{ campaign.keitaro_id }} | Алиас: {{ campaign.alias }}</p>
+        </div>
+        <div class="space-x-2">
+            <button id="fetch-streams-btn" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded">
+                Fetch streams from Keitaro
+            </button>
+            {% if settings.KEITARO_URL %}
+            <a href="{{ settings.KEITARO_URL }}/admin/campaigns/{{ campaign.keitaro_id }}" target="_blank" class="inline-block bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded">
+                View in Keitaro
+            </a>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<!-- Предупреждение о расхождениях -->
+<div id="sync-warning" class="hidden bg-yellow-100 border-l-4 border-yellow-500 text-yellow-700 p-4 mb-4" role="alert">
+    <p class="font-bold">Внимание!</p>
+    <p>Данные в Keitaro отличаются от локальных. Нажмите "Fetch streams from Keitaro" для синхронизации.</p>
+</div>
+
+{% if flows %}
+<div class="space-y-6">
+    {% for flow in flows %}
+    <div class="bg-white shadow-md rounded-lg overflow-hidden flow-container" data-flow-id="{{ flow.id }}">
+        <!-- Заголовок потока -->
+        <div class="bg-gray-50 px-6 py-4 border-b border-gray-200">
+            <div class="flex justify-between items-center">
+                <div>
+                    <h3 class="text-lg font-semibold text-gray-900">{{ flow.name }}</h3>
+                    <p class="text-sm text-gray-500">Position: {{ flow.position }} | State: {{ flow.state }}</p>
+                </div>
+                <div class="space-x-2 flow-actions" style="display: none;">
+                    <button class="push-flow-btn bg-green-600 hover:bg-green-700 text-white font-bold py-1 px-3 rounded text-sm">
+                        Push to Keitaro
+                    </button>
+                    <button class="cancel-flow-btn bg-gray-600 hover:bg-gray-700 text-white font-bold py-1 px-3 rounded text-sm">
+                        Cancel
+                    </button>
+                </div>
+            </div>
+            
+            <!-- Форма добавления оффера -->
+            <div class="mt-4">
+                <div class="flex space-x-2">
+                    <input type="text" 
+                           class="offer-autocomplete flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500" 
+                           placeholder="Начните вводить название оффера..."
+                           data-flow-id="{{ flow.id }}">
+                    <button class="add-offer-btn bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded"
+                            data-flow-id="{{ flow.id }}">
+                        Добавить
+                    </button>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Таблица офферов -->
+        <div class="overflow-x-auto">
+            <table class="min-w-full divide-y divide-gray-200">
+                <thead class="bg-gray-50">
+                    <tr>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Оффер</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Share (%)</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Состояние</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Действия</th>
+                    </tr>
+                </thead>
+                <tbody class="bg-white divide-y divide-gray-200 flow-offers-tbody">
+                    {% for flow_offer in flow.flow_offers.all %}
+                    <tr data-flow-offer-id="{{ flow_offer.id }}">
+                        <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 offer-name">
+                            {{ flow_offer.offer.name }}
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                            <div class="flex items-center space-x-2">
+                                <input type="number" 
+                                       class="share-input w-20 px-2 py-1 border border-gray-300 rounded"
+                                       value="{{ flow_offer.share }}"
+                                       min="0" 
+                                       max="100"
+                                       data-flow-offer-id="{{ flow_offer.id }}">
+                                <button class="pin-share-btn {% if flow_offer.is_pinned %}text-blue-600{% else %}text-gray-400{% endif %}"
+                                        data-flow-offer-id="{{ flow_offer.id }}"
+                                        data-pinned="{{ flow_offer.is_pinned|lower }}"
+                                        title="Зафиксировать share">
+                                    📌
+                                </button>
+                            </div>
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap">
+                            <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full {% if flow_offer.state == 'active' %}bg-green-100 text-green-800{% else %}bg-gray-100 text-gray-800{% endif %}">
+                                {{ flow_offer.state }}
+                            </span>
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                            <button class="remove-offer-btn text-red-600 hover:text-red-900"
+                                    data-flow-offer-id="{{ flow_offer.id }}">
+                                Удалить
+                            </button>
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="4" class="px-6 py-4 text-center text-gray-500">
+                            Офферы не добавлены
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% else %}
+<div class="bg-white shadow-md rounded-lg p-8 text-center">
+    <p class="text-gray-500 text-lg mb-4">Потоки не найдены</p>
+    <p class="text-sm text-gray-500">Нажмите "Fetch streams from Keitaro" для загрузки</p>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block extra_js %}
+<script src="{% static 'js/campaign_detail.js' %}"></script>
+<script>
+// Данные для JS
+window.campaignId = {{ campaign.id }};
+window.csrfToken = '{{ csrf_token }}';
+</script>
+{% endblock %}
+

@@ -1,3 +1,434 @@
-from django.shortcuts import render
+from django.views.generic import ListView, DetailView
+from django.views import View
+from django.shortcuts import render, get_object_or_404, redirect
+from django.http import JsonResponse
+from django.contrib import messages
+from django.db import transaction
+from .models import Campaign, Flow, Offer, FlowOffer
+from .services import KeitaroSyncService, ShareCalculator, KeitaroAPIException
 
-# Create your views here.
+
+class CampaignListView(ListView):
+    """Список рекламных кампаний"""
+    model = Campaign
+    template_name = 'campaigns/campaign_list.html'
+    context_object_name = 'campaigns'
+    paginate_by = 50
+    
+    def get_queryset(self):
+        """Получение кампаний текущего пользователя"""
+        return Campaign.objects.filter(user=self.request.user).order_by('-created_at')
+    
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        # Добавляем количество потоков для каждой кампании
+        for campaign in context['campaigns']:
+            campaign.flows_count = campaign.flows.count()
+        return context
+
+
+class SyncCampaignsView(View):
+    """AJAX: Синхронизация кампаний из Keitaro"""
+    
+    def post(self, request):
+        try:
+            sync_service = KeitaroSyncService(request.user)
+            count = sync_service.sync_campaigns()
+            
+            return JsonResponse({
+                'success': True,
+                'message': f'Синхронизировано кампаний: {count}',
+                'count': count,
+            })
+        except Exception as e:
+            return JsonResponse({
+                'success': False,
+                'error': str(e),
+            }, status=500)
+
+
+class CampaignDetailView(DetailView):
+    """Детальная страница кампании с потоками"""
+    model = Campaign
+    template_name = 'campaigns/campaign_detail.html'
+    context_object_name = 'campaign'
+    
+    def get_queryset(self):
+        """Только кампании текущего пользователя"""
+        return Campaign.objects.filter(user=self.request.user)
+    
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        # Получаем потоки с офферами
+        flows = self.object.flows.prefetch_related('flow_offers__offer').order_by('position')
+        context['flows'] = flows
+        return context
+
+
+class FetchStreamsView(View):
+    """AJAX: Синхронизация потоков кампании из Keitaro"""
+    
+    def post(self, request, pk):
+        try:
+            campaign = get_object_or_404(Campaign, pk=pk, user=request.user)
+            sync_service = KeitaroSyncService(request.user)
+            count = sync_service.sync_streams(campaign)
+            
+            return JsonResponse({
+                'success': True,
+                'message': f'Синхронизировано потоков: {count}',
+                'count': count,
+            })
+        except Exception as e:
+            return JsonResponse({
+                'success': False,
+                'error': str(e),
+            }, status=500)
+
+
+class CheckSyncView(View):
+    """AJAX: Проверка расхождений с Keitaro"""
+    
+    def get(self, request, pk):
+        try:
+            campaign = get_object_or_404(Campaign, pk=pk, user=request.user)
+            sync_service = KeitaroSyncService(request.user)
+            
+            differences = []
+            for flow in campaign.flows.all():
+                result = sync_service.compare_with_keitaro(flow)
+                if result.get('has_differences'):
+                    differences.append({
+                        'flow_id': flow.id,
+                        'flow_name': flow.name,
+                        'local': result.get('local_offers'),
+                        'keitaro': result.get('keitaro_offers'),
+                    })
+            
+            return JsonResponse({
+                'success': True,
+                'has_differences': len(differences) > 0,
+                'differences': differences,
+            })
+        except Exception as e:
+            return JsonResponse({
+                'success': False,
+                'error': str(e),
+            }, status=500)
+
+
+class AddOfferView(View):
+    """AJAX: Добавление оффера в поток"""
+    
+    def post(self, request, flow_id):
+        try:
+            flow = get_object_or_404(Flow, pk=flow_id, campaign__user=request.user)
+            offer_id = request.POST.get('offer_id')
+            
+            if not offer_id:
+                return JsonResponse({'success': False, 'error': 'Не указан offer_id'}, status=400)
+            
+            offer = get_object_or_404(Offer, keitaro_id=offer_id, user=request.user)
+            
+            # Проверяем что оффер ещё не добавлен
+            if FlowOffer.objects.filter(flow=flow, offer=offer).exists():
+                return JsonResponse({'success': False, 'error': 'Оффер уже добавлен в этот поток'}, status=400)
+            
+            with transaction.atomic():
+                # Создаём новый FlowOffer
+                flow_offer = FlowOffer.objects.create(
+                    flow=flow,
+                    offer=offer,
+                    share=0,
+                    state='active'
+                )
+                
+                # Пересчитываем share
+                flow_offers = list(flow.flow_offers.filter(state='active'))
+                new_shares = ShareCalculator.recalculate_shares(flow_offers)
+                
+                for fo in flow_offers:
+                    fo.share = new_shares[fo.id]
+                    fo.save(update_fields=['share'])
+            
+            return JsonResponse({
+                'success': True,
+                'message': 'Оффер добавлен',
+                'flow_offer_id': flow_offer.id,
+            })
+            
+        except ValueError as e:
+            return JsonResponse({'success': False, 'error': str(e)}, status=400)
+        except Exception as e:
+            return JsonResponse({'success': False, 'error': str(e)}, status=500)
+
+
+class RemoveOfferView(View):
+    """AJAX: Удаление оффера из потока"""
+    
+    def post(self, request, pk):
+        try:
+            flow_offer = get_object_or_404(FlowOffer, pk=pk, flow__campaign__user=request.user)
+            flow = flow_offer.flow
+            
+            with transaction.atomic():
+                # Удаляем FlowOffer
+                flow_offer.delete()
+                
+                # Пересчитываем share для оставшихся
+                flow_offers = list(flow.flow_offers.filter(state='active'))
+                if flow_offers:
+                    new_shares = ShareCalculator.recalculate_shares(flow_offers)
+                    
+                    for fo in flow_offers:
+                        fo.share = new_shares[fo.id]
+                        fo.save(update_fields=['share'])
+            
+            return JsonResponse({
+                'success': True,
+                'message': 'Оффер удалён',
+            })
+            
+        except Exception as e:
+            return JsonResponse({'success': False, 'error': str(e)}, status=500)
+
+
+class UpdateShareView(View):
+    """AJAX: Обновление share оффера"""
+    
+    def post(self, request, pk):
+        try:
+            flow_offer = get_object_or_404(FlowOffer, pk=pk, flow__campaign__user=request.user)
+            share = request.POST.get('share')
+            is_pinned = request.POST.get('is_pinned') == 'true'
+            
+            if share is None:
+                return JsonResponse({'success': False, 'error': 'Не указан share'}, status=400)
+            
+            try:
+                share = int(share)
+            except ValueError:
+                return JsonResponse({'success': False, 'error': 'Share должен быть числом'}, status=400)
+            
+            if share < 0 or share > 100:
+                return JsonResponse({'success': False, 'error': 'Share должен быть от 0 до 100'}, status=400)
+            
+            with transaction.atomic():
+                # Обновляем текущий
+                flow_offer.share = share
+                flow_offer.is_pinned = is_pinned
+                flow_offer.save()
+                
+                # Пересчитываем остальные незафиксированные
+                flow_offers = list(flow_offer.flow.flow_offers.filter(state='active'))
+                new_shares = ShareCalculator.recalculate_shares(flow_offers)
+                
+                for fo in flow_offers:
+                    if fo.id != flow_offer.id:  # Текущий уже обновили
+                        fo.share = new_shares[fo.id]
+                        fo.save(update_fields=['share'])
+                
+                # Валидация
+                is_valid, error = ShareCalculator.validate_shares(flow_offers)
+                
+                if not is_valid:
+                    return JsonResponse({
+                        'success': False,
+                        'error': error,
+                        'is_valid': False,
+                    }, status=400)
+            
+            return JsonResponse({
+                'success': True,
+                'message': 'Share обновлён',
+                'is_valid': True,
+            })
+            
+        except ValueError as e:
+            return JsonResponse({'success': False, 'error': str(e)}, status=400)
+        except Exception as e:
+            return JsonResponse({'success': False, 'error': str(e)}, status=500)
+
+
+class PushToKeitaroView(View):
+    """AJAX: Отправка изменений в Keitaro"""
+    
+    def post(self, request, flow_id):
+        try:
+            flow = get_object_or_404(Flow, pk=flow_id, campaign__user=request.user)
+            sync_service = KeitaroSyncService(request.user)
+            
+            sync_service.push_stream_offers(flow)
+            
+            return JsonResponse({
+                'success': True,
+                'message': 'Изменения отправлены в Keitaro',
+            })
+            
+        except Exception as e:
+            return JsonResponse({'success': False, 'error': str(e)}, status=500)
+
+
+class CancelChangesView(View):
+    """AJAX: Отмена изменений (reload потока из Keitaro)"""
+    
+    def post(self, request, flow_id):
+        try:
+            flow = get_object_or_404(Flow, pk=flow_id, campaign__user=request.user)
+            sync_service = KeitaroSyncService(request.user)
+            
+            # Перезагружаем данные из Keitaro
+            sync_service.sync_streams(flow.campaign)
+            
+            return JsonResponse({
+                'success': True,
+                'message': 'Изменения отменены',
+            })
+            
+        except Exception as e:
+            return JsonResponse({'success': False, 'error': str(e)}, status=500)
+
+
+class OfferAutocompleteView(View):
+    """AJAX: Автодополнение офферов"""
+    
+    def get(self, request):
+        query = request.GET.get('q', '').strip()
+        
+        if len(query) < 2:
+            return JsonResponse({'results': []})
+        
+        # Поиск по кэшу офферов
+        offers = Offer.objects.filter(
+            user=request.user,
+            name__icontains=query,
+            state='active'
+        ).order_by('name')[:20]
+        
+        results = [{
+            'id': offer.keitaro_id,
+            'name': offer.name,
+        } for offer in offers]
+        
+        return JsonResponse({'results': results})
+
+
+class CampaignStatsAPIView(View):
+    """AJAX: Получение статистики кампаний через Keitaro report API"""
+    
+    def post(self, request):
+        try:
+            campaign_ids = request.POST.getlist('campaign_ids[]')
+            
+            if not campaign_ids:
+                return JsonResponse({'success': False, 'error': 'Не указаны campaign_ids'}, status=400)
+            
+            # Получаем кампании пользователя
+            campaigns = Campaign.objects.filter(
+                id__in=campaign_ids,
+                user=request.user
+            )
+            
+            sync_service = KeitaroSyncService(request.user)
+            
+            # Формируем параметры отчёта
+            # Получаем статистику за последние 30 дней
+            from datetime import datetime, timedelta
+            end_date = datetime.now()
+            start_date = end_date - timedelta(days=30)
+            
+            # Собираем keitaro_ids кампаний
+            keitaro_campaign_ids = [c.keitaro_id for c in campaigns]
+            
+            report_params = {
+                'range': {
+                    'from': start_date.strftime('%Y-%m-%d'),
+                    'to': end_date.strftime('%Y-%m-%d'),
+                    'timezone': 'UTC'
+                },
+                'columns': ['campaign_id'],
+                'metrics': [
+                    'clicks',
+                    'conversions', 
+                    'sales',
+                    'cr',
+                    'crs',
+                    'revenue',
+                    'cost',
+                    'profit',
+                    'roi'
+                ],
+                'filters': [
+                    {
+                        'name': 'campaign_id',
+                        'operator': 'IN_LIST',
+                        'expression': keitaro_campaign_ids
+                    }
+                ]
+            }
+            
+            try:
+                report_data = sync_service.client.get_report(report_params)
+                
+                # Преобразуем данные в удобный формат
+                stats = {}
+                
+                if 'rows' in report_data:
+                    for row in report_data['rows']:
+                        camp_keitaro_id = row.get('campaign_id')
+                        # Находим campaign по keitaro_id
+                        campaign = campaigns.filter(keitaro_id=camp_keitaro_id).first()
+                        if campaign:
+                            stats[str(campaign.id)] = {
+                                'clicks': row.get('clicks', 0),
+                                'conversions': row.get('conversions', 0),
+                                'sales': row.get('sales', 0),
+                                'cr': round(row.get('cr', 0), 2),
+                                'revenue': round(row.get('revenue', 0), 2),
+                                'cost': round(row.get('cost', 0), 2),
+                                'profit': round(row.get('profit', 0), 2),
+                                'roi': round(row.get('roi', 0), 2),
+                            }
+                
+                # Для кампаний без данных возвращаем нули
+                for campaign in campaigns:
+                    if str(campaign.id) not in stats:
+                        stats[str(campaign.id)] = {
+                            'clicks': 0,
+                            'conversions': 0,
+                            'sales': 0,
+                            'cr': 0,
+                            'revenue': 0,
+                            'cost': 0,
+                            'profit': 0,
+                            'roi': 0,
+                        }
+                
+                return JsonResponse({
+                    'success': True,
+                    'stats': stats,
+                })
+                
+            except KeitaroAPIException as e:
+                # Если не удалось получить статистику, возвращаем нули
+                stats = {}
+                for campaign in campaigns:
+                    stats[str(campaign.id)] = {
+                        'clicks': 0,
+                        'conversions': 0,
+                        'sales': 0,
+                        'cr': 0,
+                        'revenue': 0,
+                        'cost': 0,
+                        'profit': 0,
+                        'roi': 0,
+                    }
+                
+                return JsonResponse({
+                    'success': True,
+                    'stats': stats,
+                    'warning': 'Не удалось загрузить статистику: ' + str(e)
+                })
+            
+        except Exception as e:
+            return JsonResponse({'success': False, 'error': str(e)}, status=500)

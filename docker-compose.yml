@@ -3,6 +3,7 @@ version: '3.8'
 services:
   db:
     image: postgres:15-alpine
+    container_name: icm_db
     volumes:
       - postgres_data:/var/lib/postgresql/data
     environment:
@@ -18,6 +19,7 @@ services:
       retries: 5
 
   web:
+    container_name: icm_web
     build: .
     command: python app/manage.py runserver 0.0.0.0:8000
     volumes:
