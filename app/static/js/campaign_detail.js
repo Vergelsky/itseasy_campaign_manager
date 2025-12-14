@@ -286,32 +286,32 @@ $(document).ready(function() {
                     }
                     
                     // Автоматически закрепляем оффер (обновляем кнопку pin)
-                    pinBtn.data('pinned', 'true');
-                    pinBtn.removeClass('text-gray-400').addClass('text-blue-600');
+                    // Используем значение из ответа сервера, если оно есть
+                    const pinned = data.is_pinned !== undefined ? data.is_pinned : true;
+                    pinBtn.data('pinned', pinned);
+                    // Убеждаемся, что классы правильно установлены
+                    pinBtn.removeClass('text-gray-400 text-blue-600');
+                    if (pinned) {
+                        pinBtn.addClass('text-blue-600');
+                    } else {
+                        pinBtn.addClass('text-gray-400');
+                    }
                     
-                    // Обновляем share для всех офферов в потоке
+                    // Обновляем share для всех офферов в потоке (включая текущий)
                     if (data.all_shares) {
                         Object.keys(data.all_shares).forEach(function(foId) {
                             const shareInput = $(`.share-input[data-flow-offer-id="${foId}"]`);
                             if (shareInput.length && !shareInput.prop('disabled')) {
                                 const foIdNum = parseInt(foId);
                                 const flowOfferIdNum = parseInt(flowOfferId);
-                                const oldShare = shareInput.val();
-                                const newShare = data.all_shares[foId];
+                                const oldShare = parseInt(shareInput.val()) || 0;
+                                const newShare = parseInt(data.all_shares[foId]) || 0;
                                 
-                                // Обновляем все офферы, включая текущий (если значение было ограничено)
-                                if (foIdNum == flowOfferIdNum) {
-                                    // Для текущего обновляем только если значение было ограничено
-                                    if (data.limited_share !== undefined && oldShare != newShare) {
-                                        shareInput.val(newShare);
-                                    }
-                                } else {
-                                    // Для остальных обновляем если значение изменилось
-                                    if (oldShare != newShare) {
-                                        shareInput.val(newShare);
-                                        // Подсвечиваем измененные share (постоянно, до пуша)
-                                        shareInput.addClass('share-changed');
-                                    }
+                                // Обновляем значение, если оно изменилось
+                                if (oldShare != newShare) {
+                                    shareInput.val(newShare);
+                                    // Подсвечиваем измененные share (постоянно, до пуша)
+                                    shareInput.addClass('share-changed');
                                 }
                             }
                         });
@@ -341,11 +341,22 @@ $(document).ready(function() {
     
     // Фиксация share
     $(document).on('click', '.pin-share-btn', function() {
-        const flowOfferId = $(this).data('flow-offer-id');
-        const isPinned = $(this).data('pinned');
+        const pinBtn = $(this);
+        const flowOfferId = pinBtn.data('flow-offer-id');
+        // Корректно определяем текущее состояние (может быть 'true', 'false', true, false)
+        const currentPinned = pinBtn.data('pinned');
+        const isPinned = currentPinned === 'true' || currentPinned === true;
         const newPinned = !isPinned;
         const share = $(`.share-input[data-flow-offer-id="${flowOfferId}"]`).val();
-        const flowId = $(this).closest('.flow-container').data('flow-id');
+        const flowId = pinBtn.closest('.flow-container').data('flow-id');
+        
+        // Оптимистичное обновление UI сразу при клике
+        pinBtn.data('pinned', newPinned);
+        if (newPinned) {
+            pinBtn.removeClass('text-gray-400').addClass('text-blue-600');
+        } else {
+            pinBtn.removeClass('text-blue-600').addClass('text-gray-400');
+        }
         
         $.ajax({
             url: `/campaigns/flow-offer/${flowOfferId}/update-share/`,
@@ -357,14 +368,60 @@ $(document).ready(function() {
             },
             success: function(data) {
                 if (data.success) {
-                    $(this).data('pinned', newPinned);
-                    $(this).toggleClass('text-blue-600 text-gray-400');
+                    // Обновляем состояние булавки на основе ответа сервера
+                    const pinned = data.is_pinned !== undefined ? data.is_pinned : newPinned;
+                    pinBtn.data('pinned', pinned);
+                    // Убеждаемся, что классы правильно установлены
+                    pinBtn.removeClass('text-gray-400 text-blue-600');
+                    if (pinned) {
+                        pinBtn.addClass('text-blue-600');
+                    } else {
+                        pinBtn.addClass('text-gray-400');
+                    }
                     markFlowAsEdited(flowId);
+                    showToast(pinned ? 'Share зафиксирован' : 'Share разфиксирован', 'success');
+                    
+                    // Обновляем share для всех офферов в потоке, если они изменились
+                    if (data.all_shares) {
+                        Object.keys(data.all_shares).forEach(function(foId) {
+                            const shareInput = $(`.share-input[data-flow-offer-id="${foId}"]`);
+                            if (shareInput.length && !shareInput.prop('disabled')) {
+                                const oldShare = shareInput.val();
+                                const newShare = data.all_shares[foId];
+                                if (oldShare != newShare) {
+                                    shareInput.val(newShare);
+                                    shareInput.addClass('share-changed');
+                                }
+                            }
+                        });
+                    }
+                } else {
+                    // Откатываем визуальное состояние при ошибке
+                    const currentPinned = pinBtn.data('pinned');
+                    const wasPinned = currentPinned === 'true' || currentPinned === true;
+                    pinBtn.data('pinned', !wasPinned); // Откатываем к предыдущему состоянию
+                    pinBtn.removeClass('text-gray-400 text-blue-600');
+                    if (wasPinned) {
+                        pinBtn.addClass('text-blue-600');
+                    } else {
+                        pinBtn.addClass('text-gray-400');
+                    }
+                    showToast(data.error || 'Ошибка при изменении фиксации', 'error');
                 }
-            }.bind(this),
+            },
             error: function(xhr) {
+                // Откатываем визуальное состояние при ошибке
+                const currentPinned = pinBtn.data('pinned');
+                const wasPinned = currentPinned === 'true' || currentPinned === true;
+                pinBtn.data('pinned', !wasPinned); // Откатываем к предыдущему состоянию
+                pinBtn.removeClass('text-gray-400 text-blue-600');
+                if (wasPinned) {
+                    pinBtn.addClass('text-blue-600');
+                } else {
+                    pinBtn.addClass('text-gray-400');
+                }
                 const error = xhr.responseJSON?.error || 'Неизвестная ошибка';
-                alert('Ошибка: ' + error);
+                showToast(error, 'error');
             }
         });
     });

@@ -265,15 +265,14 @@ class UpdateShareView(View):
                 
                 new_shares = ShareCalculator.recalculate_shares(flow_offers)
                 
-                # Обновляем share для всех офферов
+                # Обновляем share для всех офферов (используем пересчитанные значения)
                 updated_shares = {}
-                # Добавляем текущий оффер с обновлённым share
-                updated_shares[flow_offer.id] = flow_offer.share
                 for fo in flow_offers:
-                    if fo.id != flow_offer.id:  # Текущий уже обновили
-                        fo.share = new_shares[fo.id]
-                        fo.save(update_fields=['share'])
-                        updated_shares[fo.id] = fo.share
+                    # Используем пересчитанное значение из new_shares для всех офферов
+                    new_share = new_shares[fo.id]
+                    fo.share = new_share
+                    fo.save(update_fields=['share'])
+                    updated_shares[fo.id] = new_share
                 
                 # Валидация
                 is_valid, error = ShareCalculator.validate_shares(flow_offers)
@@ -290,6 +289,7 @@ class UpdateShareView(View):
                 'message': 'Share обновлён',
                 'is_valid': True,
                 'all_shares': updated_shares,
+                'is_pinned': is_pinned,  # Возвращаем состояние фиксации
             }
             
             if share_limited:
