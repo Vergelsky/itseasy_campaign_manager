@@ -6,12 +6,6 @@ class Campaign(models.Model):
     """Рекламная кампания из Keitaro"""
     
     keitaro_id = models.IntegerField(unique=True, verbose_name='ID в Keitaro')
-    user = models.ForeignKey(
-        settings.AUTH_USER_MODEL,
-        on_delete=models.CASCADE,
-        related_name='campaigns',
-        verbose_name='Пользователь'
-    )
     name = models.CharField(max_length=255, verbose_name='Название')
     alias = models.CharField(max_length=255, blank=True, verbose_name='Алиас')
     state = models.CharField(max_length=50, default='active', verbose_name='Состояние')
@@ -26,7 +20,7 @@ class Campaign(models.Model):
         ordering = ['-created_at']
         indexes = [
             models.Index(fields=['keitaro_id']),
-            models.Index(fields=['user', 'state']),
+            models.Index(fields=['state']),
         ]
     
     def __str__(self):

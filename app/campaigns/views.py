@@ -18,8 +18,8 @@ class CampaignListView(ListView):
     paginate_by = 50
     
     def get_queryset(self):
-        """Получение кампаний текущего пользователя"""
-        return Campaign.objects.filter(user=self.request.user).order_by('-created_at')
+        """Получение всех кампаний"""
+        return Campaign.objects.all().order_by('-created_at')
     
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
@@ -56,8 +56,8 @@ class CampaignDetailView(DetailView):
     context_object_name = 'campaign'
     
     def get_queryset(self):
-        """Только кампании текущего пользователя"""
-        return Campaign.objects.filter(user=self.request.user)
+        """Все кампании"""
+        return Campaign.objects.all()
     
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
@@ -75,7 +75,7 @@ class FetchStreamsView(View):
     
     def post(self, request, pk):
         try:
-            campaign = get_object_or_404(Campaign, pk=pk, user=request.user)
+            campaign = get_object_or_404(Campaign, pk=pk)
             sync_service = KeitaroSyncService(request.user)
             count = sync_service.sync_streams(campaign)
             
@@ -96,7 +96,7 @@ class CheckSyncView(View):
     
     def get(self, request, pk):
         try:
-            campaign = get_object_or_404(Campaign, pk=pk, user=request.user)
+            campaign = get_object_or_404(Campaign, pk=pk)
             sync_service = KeitaroSyncService(request.user)
             
             differences = []
@@ -127,7 +127,7 @@ class AddOfferView(View):
     
     def post(self, request, flow_id):
         try:
-            flow = get_object_or_404(Flow, pk=flow_id, campaign__user=request.user)
+            flow = get_object_or_404(Flow, pk=flow_id)
             offer_id = request.POST.get('offer_id')
             
             if not offer_id:
@@ -173,7 +173,7 @@ class RemoveOfferView(View):
     
     def post(self, request, pk):
         try:
-            flow_offer = get_object_or_404(FlowOffer, pk=pk, flow__campaign__user=request.user)
+            flow_offer = get_object_or_404(FlowOffer, pk=pk)
             flow = flow_offer.flow
             
             with transaction.atomic():
@@ -203,7 +203,7 @@ class UpdateShareView(View):
     
     def post(self, request, pk):
         try:
-            flow_offer = get_object_or_404(FlowOffer, pk=pk, flow__campaign__user=request.user)
+            flow_offer = get_object_or_404(FlowOffer, pk=pk)
             share = request.POST.get('share')
             is_pinned = request.POST.get('is_pinned') == 'true'
             
@@ -260,7 +260,7 @@ class PushToKeitaroView(View):
     
     def post(self, request, flow_id):
         try:
-            flow = get_object_or_404(Flow, pk=flow_id, campaign__user=request.user)
+            flow = get_object_or_404(Flow, pk=flow_id)
             sync_service = KeitaroSyncService(request.user)
             
             sync_service.push_stream_offers(flow)
@@ -279,7 +279,7 @@ class CancelChangesView(View):
     
     def post(self, request, flow_id):
         try:
-            flow = get_object_or_404(Flow, pk=flow_id, campaign__user=request.user)
+            flow = get_object_or_404(Flow, pk=flow_id)
             sync_service = KeitaroSyncService(request.user)
             
             # Перезагружаем данные из Keitaro
@@ -328,10 +328,9 @@ class CampaignStatsAPIView(View):
             if not campaign_ids:
                 return JsonResponse({'success': False, 'error': 'Не указаны campaign_ids'}, status=400)
             
-            # Получаем кампании пользователя
+            # Получаем кампании
             campaigns = Campaign.objects.filter(
-                id__in=campaign_ids,
-                user=request.user
+                id__in=campaign_ids
             )
             
             sync_service = KeitaroSyncService(request.user)

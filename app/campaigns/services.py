@@ -316,16 +316,27 @@ class KeitaroSyncService:
             
             synced_count = 0
             for camp_data in campaigns_data:
-                campaign, created = Campaign.objects.update_or_create(
-                    keitaro_id=camp_data['id'],
-                    user=self.user,
-                    defaults={
-                        'name': camp_data.get('name', ''),
-                        'alias': camp_data.get('alias', ''),
-                        'state': camp_data.get('state', 'active'),
-                        'type': camp_data.get('type', 'position'),
-                    }
-                )
+                keitaro_id = camp_data['id']
+                
+                # Проверяем, существует ли кампания с таким keitaro_id
+                try:
+                    existing_campaign = Campaign.objects.get(keitaro_id=keitaro_id)
+                    # Если кампания существует, обновляем её данные
+                    existing_campaign.name = camp_data.get('name', '')
+                    existing_campaign.alias = camp_data.get('alias', '')
+                    existing_campaign.state = camp_data.get('state', 'active')
+                    existing_campaign.type = camp_data.get('type', 'position')
+                    existing_campaign.save()
+                except Campaign.DoesNotExist:
+                    # Кампания не существует - создаём новую
+                    Campaign.objects.create(
+                        keitaro_id=keitaro_id,
+                        name=camp_data.get('name', ''),
+                        alias=camp_data.get('alias', ''),
+                        state=camp_data.get('state', 'active'),
+                        type=camp_data.get('type', 'position'),
+                    )
+                
                 synced_count += 1
             
             return synced_count

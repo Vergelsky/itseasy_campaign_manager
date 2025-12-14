@@ -6,7 +6,7 @@ from .models import Campaign, Flow, Offer, FlowOffer
 class CampaignAdmin(admin.ModelAdmin):
     """Админ-панель для модели Campaign"""
     
-    list_display = ('id', 'name', 'keitaro_id', 'user', 'state', 'type', 'synced_at')
+    list_display = ('id', 'name', 'keitaro_id', 'state', 'type', 'synced_at')
     list_filter = ('state', 'type', 'synced_at')
     search_fields = ('name', 'alias', 'keitaro_id')
     readonly_fields = ('keitaro_id', 'synced_at', 'created_at')
@@ -14,7 +14,7 @@ class CampaignAdmin(admin.ModelAdmin):
     
     fieldsets = (
         ('Основная информация', {
-            'fields': ('user', 'name', 'alias', 'state', 'type')
+            'fields': ('name', 'alias', 'state', 'type')
         }),
         ('Keitaro', {
             'fields': ('keitaro_id', 'synced_at')
@@ -31,7 +31,7 @@ class FlowAdmin(admin.ModelAdmin):
     """Админ-панель для модели Flow"""
     
     list_display = ('id', 'name', 'campaign', 'keitaro_id', 'type', 'position', 'state', 'synced_at')
-    list_filter = ('type', 'state', 'campaign__user', 'synced_at')
+    list_filter = ('type', 'state', 'synced_at')
     search_fields = ('name', 'keitaro_id', 'campaign__name')
     readonly_fields = ('keitaro_id', 'synced_at', 'created_at')
     list_per_page = 50
@@ -79,7 +79,7 @@ class FlowOfferAdmin(admin.ModelAdmin):
     """Админ-панель для модели FlowOffer"""
     
     list_display = ('id', 'flow', 'offer', 'share', 'is_pinned', 'state', 'updated_at')
-    list_filter = ('state', 'is_pinned', 'flow__campaign__user')
+    list_filter = ('state', 'is_pinned')
     search_fields = ('flow__name', 'offer__name')
     readonly_fields = ('keitaro_offer_stream_id', 'created_at', 'updated_at')
     list_per_page = 50
