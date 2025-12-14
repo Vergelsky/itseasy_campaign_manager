@@ -7,8 +7,8 @@
 
 /* Добавленный оффер - зелёный текст bold */
 .text-added {
-    color: #10B981;
-    font-weight: bold;
+    color: #10B981 !important;
+    font-weight: bold !important;
 }
 
 /* Удаляемый оффер - красный текст bold */

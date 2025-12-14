@@ -137,7 +137,66 @@ $(document).ready(function() {
                 if (data.success) {
                     markFlowAsEdited(flowId);
                     showToast('Оффер добавлен', 'success');
-                    setTimeout(() => location.reload(), 1000);
+                    // Очищаем поле ввода
+                    input.val('').data('selected-offer-id', null);
+                    selectedOfferId = null;
+                    btn.prop('disabled', false).text('Добавить');
+                    // Добавляем строку в таблицу динамически
+                    const tbody = $(`.flow-container[data-flow-id="${flowId}"] .flow-offers-tbody`);
+                    const newRow = $(`
+                        <tr data-flow-offer-id="${data.flow_offer_id}">
+                            <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 offer-name">
+                                ${data.offer_name}
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                                <div class="flex items-center space-x-2">
+                                    <input type="number" 
+                                           class="share-input w-20 px-2 py-1 border border-gray-300 rounded"
+                                           value="${data.share}"
+                                           min="0" 
+                                           max="100"
+                                           data-flow-offer-id="${data.flow_offer_id}">
+                                    <button class="pin-share-btn text-gray-400" 
+                                            data-flow-offer-id="${data.flow_offer_id}"
+                                            data-pinned="false"
+                                            title="Зафиксировать share">
+                                        📌
+                                    </button>
+                                </div>
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap">
+                                <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">
+                                    active
+                                </span>
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                                <button class="remove-offer-btn text-red-600 hover:text-red-900"
+                                        data-flow-offer-id="${data.flow_offer_id}">
+                                    Удалить
+                                </button>
+                            </td>
+                        </tr>
+                    `);
+                    tbody.append(newRow);
+                    // Применяем зелёный стиль Tailwind к добавленному офферу
+                    newRow.find('.offer-name').removeClass('text-gray-900').addClass('text-green-600 font-bold');
+                    
+                    // Обновляем share для всех офферов в потоке
+                    if (data.all_shares) {
+                        Object.keys(data.all_shares).forEach(function(flowOfferId) {
+                            const shareInput = $(`.share-input[data-flow-offer-id="${flowOfferId}"]`);
+                            if (shareInput.length) {
+                                const oldShare = shareInput.val();
+                                const newShare = data.all_shares[flowOfferId];
+                                // Обновляем только если значение изменилось
+                                if (oldShare != newShare) {
+                                    shareInput.val(newShare);
+                                    // Подсвечиваем измененные share (постоянно, до пуша)
+                                    shareInput.addClass('share-changed');
+                                }
+                            }
+                        });
+                    }
                 } else {
                     showToast(data.error, 'error');
                     btn.prop('disabled', false).text('Добавить');
@@ -173,7 +232,10 @@ $(document).ready(function() {
                 if (data.success) {
                     markFlowAsEdited(flowId);
                     showToast('Оффер удалён', 'success');
-                    setTimeout(() => location.reload(), 1000);
+                    // Удаляем строку из таблицы
+                    row.fadeOut(300, function() {
+                        $(this).remove();
+                    });
                 } else {
                     showToast(data.error, 'error');
                     row.find('.offer-name').removeClass('text-removed');
@@ -197,6 +259,11 @@ $(document).ready(function() {
         const isPinned = $(`.pin-share-btn[data-flow-offer-id="${flowOfferId}"]`).data('pinned');
         const input = $(this);
         
+        // Сохраняем предыдущее значение для отката при ошибке
+        if (!input.data('previous-value')) {
+            input.data('previous-value', input.val());
+        }
+        
         // Подсветка изменения
         input.addClass('share-changed');
         
@@ -212,13 +279,14 @@ $(document).ready(function() {
                 if (data.success && data.is_valid) {
                     markFlowAsEdited(flowId);
                     showToast('Share обновлён', 'success');
-                    setTimeout(() => location.reload(), 1000);
+                    // Подсветка остается до пуша в Keitaro
                 } else {
                     input.addClass('invalid-input');
                     showToast('Ошибка валидации: ' + (data.error || 'Неверное значение'), 'error');
                     setTimeout(() => {
                         input.removeClass('invalid-input');
-                        location.reload();
+                        // Восстанавливаем предыдущее значение при ошибке
+                        input.val(data.previous_share || input.data('previous-value') || 0);
                     }, 2000);
                 }
             },
@@ -276,6 +344,10 @@ $(document).ready(function() {
             success: function(data) {
                 if (data.success) {
                     showToast(data.message, 'success');
+                    // Убираем подсветку со всех share в потоке после успешного пуша
+                    $(`.flow-container[data-flow-id="${flowId}"] .share-input`).removeClass('share-changed');
+                    // Убираем зелёную подсветку с добавленных офферов после успешного пуша
+                    $(`.flow-container[data-flow-id="${flowId}"] .offer-name`).removeClass('text-green-600 font-bold').addClass('text-gray-900');
                     setTimeout(() => location.reload(), 1000);
                 } else {
                     showToast(data.error, 'error');
@@ -304,6 +376,10 @@ $(document).ready(function() {
             headers: {'X-CSRFToken': window.csrfToken},
             success: function(data) {
                 if (data.success) {
+                    // Убираем подсветку со всех share в потоке при отмене
+                    $(`.flow-container[data-flow-id="${flowId}"] .share-input`).removeClass('share-changed');
+                    // Убираем зелёную подсветку с добавленных офферов при отмене
+                    $(`.flow-container[data-flow-id="${flowId}"] .offer-name`).removeClass('text-green-600 font-bold').addClass('text-gray-900');
                     location.reload();
                 } else {
                     alert('Ошибка: ' + data.error);

@@ -152,14 +152,20 @@ class AddOfferView(View):
                 flow_offers = list(flow.flow_offers.filter(state='active'))
                 new_shares = ShareCalculator.recalculate_shares(flow_offers)
                 
+                # Обновляем share для всех офферов
+                updated_shares = {}
                 for fo in flow_offers:
                     fo.share = new_shares[fo.id]
                     fo.save(update_fields=['share'])
+                    updated_shares[fo.id] = fo.share
             
             return JsonResponse({
                 'success': True,
                 'message': 'Оффер добавлен',
                 'flow_offer_id': flow_offer.id,
+                'offer_name': offer.name,
+                'share': flow_offer.share,
+                'all_shares': updated_shares,  # Все обновленные share для потока
             })
             
         except ValueError as e:
