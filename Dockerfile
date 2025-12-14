@@ -15,11 +15,18 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Копирование проекта
 COPY . .
 
+# Копирование и настройка entrypoint скрипта
+COPY entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
 # Создание директорий для статики и медиа
 RUN mkdir -p app/static app/media
 
 # Порт приложения
 EXPOSE 8000
+
+# Установка entrypoint
+ENTRYPOINT ["/entrypoint.sh"]
 
 # Команда запуска будет в docker-compose.yml
 
