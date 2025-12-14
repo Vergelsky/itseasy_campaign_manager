@@ -196,11 +196,15 @@ class RemoveOfferView(View):
                     for fo in flow_offers:
                         fo.share = new_shares[fo.id]
                         fo.save(update_fields=['share'])
+                
+                # Формируем all_shares включая удалённый оффер с share=0
+                all_shares = {fo.id: fo.share for fo in flow_offers}
+                all_shares[flow_offer.id] = 0  # Добавляем удалённый оффер с share=0
             
             return JsonResponse({
                 'success': True,
                 'message': 'Оффер помечен для удаления',
-                'all_shares': {fo.id: fo.share for fo in flow_offers} if flow_offers else {},
+                'all_shares': all_shares,
             })
             
         except Exception as e:

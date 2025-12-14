@@ -166,7 +166,13 @@ $(document).ready(function() {
                             // Ищем span с share (не td с названием оффера)
                             const shareSpan = $(`tr[data-flow-offer-id="${foId}"] span.font-medium`);
                             if (shareSpan.length) {
-                                shareSpan.text(data.all_shares[foId] + '%');
+                                const oldShare = parseInt(shareSpan.text().replace('%', '')) || 0;
+                                const newShare = parseInt(data.all_shares[foId]) || 0;
+                                shareSpan.text(newShare + '%');
+                                // Подсвечиваем зелёным жирным, если значение изменилось
+                                if (oldShare !== newShare) {
+                                    shareSpan.addClass('text-green-600 font-bold');
+                                }
                             }
                         });
                     }
@@ -206,13 +212,29 @@ $(document).ready(function() {
                     // Добавляем атрибут для идентификации удалённых строк
                     row.attr('data-removed', 'true');
                     
-                    // Обновляем share для всех офферов в потоке
+                    // Обновляем share для удалённого оффера (должен стать 0)
+                    const removedShareSpan = row.find('span.font-medium');
+                    if (removedShareSpan.length) {
+                        removedShareSpan.text('0%');
+                    }
+                    
+                    // Обновляем share для всех остальных офферов в потоке
                     if (data.all_shares) {
                         Object.keys(data.all_shares).forEach(function(foId) {
+                            // Пропускаем удалённый оффер (он уже обработан выше)
+                            if (parseInt(foId) === parseInt(flowOfferId)) {
+                                return;
+                            }
                             // Ищем span с share (не td с названием оффера)
                             const shareSpan = $(`tr[data-flow-offer-id="${foId}"] span.font-medium`);
                             if (shareSpan.length) {
-                                shareSpan.text(data.all_shares[foId] + '%');
+                                const oldShare = parseInt(shareSpan.text().replace('%', '')) || 0;
+                                const newShare = parseInt(data.all_shares[foId]) || 0;
+                                shareSpan.text(newShare + '%');
+                                // Подсвечиваем зелёным жирным, если значение изменилось
+                                if (oldShare !== newShare) {
+                                    shareSpan.addClass('text-green-600 font-bold');
+                                }
                             }
                         });
                     }
@@ -278,7 +300,13 @@ $(document).ready(function() {
                             // Ищем span с share (не td с названием оффера)
                             const shareSpan = $(`tr[data-flow-offer-id="${foId}"] span.font-medium`);
                             if (shareSpan.length) {
-                                shareSpan.text(data.all_shares[foId] + '%');
+                                const oldShare = parseInt(shareSpan.text().replace('%', '')) || 0;
+                                const newShare = parseInt(data.all_shares[foId]) || 0;
+                                shareSpan.text(newShare + '%');
+                                // Подсвечиваем зелёным жирным, если значение изменилось
+                                if (oldShare !== newShare) {
+                                    shareSpan.addClass('text-green-600 font-bold');
+                                }
                             }
                         });
                     }
@@ -328,6 +356,8 @@ $(document).ready(function() {
                     showToast(data.message, 'success');
                     // Убираем зелёную подсветку с добавленных офферов после успешного пуша
                     $(`.flow-container[data-flow-id="${flowId}"] .offer-name`).removeClass('text-green-600 font-bold').addClass('text-gray-900');
+                    // Убираем зелёную подсветку с изменённых share после успешного пуша
+                    $(`.flow-container[data-flow-id="${flowId}"] span.font-medium`).removeClass('text-green-600 font-bold');
                     // Удаляем строки, помеченные для удаления
                     $(`.flow-container[data-flow-id="${flowId}"] tr[data-removed="true"]`).fadeOut(300, function() {
                         $(this).remove();
@@ -364,6 +394,8 @@ $(document).ready(function() {
                     $(`.flow-container[data-flow-id="${flowId}"] .share-input`).removeClass('share-changed');
                     // Убираем зелёную подсветку с добавленных офферов при отмене
                     $(`.flow-container[data-flow-id="${flowId}"] .offer-name`).removeClass('text-green-600 font-bold').addClass('text-gray-900');
+                    // Убираем зелёную подсветку с изменённых share при отмене
+                    $(`.flow-container[data-flow-id="${flowId}"] span.font-medium`).removeClass('text-green-600 font-bold');
                     // Возвращаем нормальный цвет удалённым офферам и включаем input
                     $(`.flow-container[data-flow-id="${flowId}"] tr[data-removed="true"]`).each(function() {
                         $(this).find('.offer-name').removeClass('text-red-600 font-bold').addClass('text-gray-900');
