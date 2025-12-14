@@ -1,19 +1,27 @@
 /**
  * Campaign Detail JavaScript
  * Управление офферами в потоках кампании
- * 
- * Использует общую функцию showToast из toast.js
  */
 
 $(document).ready(function() {
     let selectedOfferId = null;
-    let originalFlowData = {};  // Для отмены изменений
     
-    // Сохраняем оригинальные данные потоков
-    $('.flow-container').each(function() {
-        const flowId = $(this).data('flow-id');
-        originalFlowData[flowId] = $(this).html();
-    });
+    // Функция для обновления значений share в UI
+    function updateShareValues(flowId, allShares, excludeId = null) {
+        if (!allShares) return;
+        Object.keys(allShares).forEach(function(foId) {
+            if (excludeId && parseInt(foId) === parseInt(excludeId)) return;
+            const shareSpan = $(`tr[data-flow-offer-id="${foId}"] span.font-medium`);
+            if (shareSpan.length) {
+                const oldShare = parseInt(shareSpan.text().replace('%', '')) || 0;
+                const newShare = parseInt(allShares[foId]) || 0;
+                shareSpan.text(newShare + '%');
+                if (oldShare !== newShare) {
+                    shareSpan.addClass('text-green-600 font-bold');
+                }
+            }
+        });
+    }
     
     // Fetch streams from Keitaro
     $('#fetch-streams-btn').on('click', function() {
@@ -132,6 +140,12 @@ $(document).ready(function() {
                             <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 offer-name">
                                 ${data.offer_name}
                             </td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                <!-- Stats column - пусто на будущее -->
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                <!-- Trends column - пусто на будущее -->
+                            </td>
                             <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                                 <div class="flex items-center space-x-2">
                                     <span class="font-medium">${data.share}%</span>
@@ -162,19 +176,7 @@ $(document).ready(function() {
                     
                     // Обновляем share для всех офферов в потоке
                     if (data.all_shares) {
-                        Object.keys(data.all_shares).forEach(function(foId) {
-                            // Ищем span с share (не td с названием оффера)
-                            const shareSpan = $(`tr[data-flow-offer-id="${foId}"] span.font-medium`);
-                            if (shareSpan.length) {
-                                const oldShare = parseInt(shareSpan.text().replace('%', '')) || 0;
-                                const newShare = parseInt(data.all_shares[foId]) || 0;
-                                shareSpan.text(newShare + '%');
-                                // Подсвечиваем зелёным жирным, если значение изменилось
-                                if (oldShare !== newShare) {
-                                    shareSpan.addClass('text-green-600 font-bold');
-                                }
-                            }
-                        });
+                        updateShareValues(flowId, data.all_shares);
                     }
                 } else {
                     showToast(data.error, 'error');
@@ -220,23 +222,7 @@ $(document).ready(function() {
                     
                     // Обновляем share для всех остальных офферов в потоке
                     if (data.all_shares) {
-                        Object.keys(data.all_shares).forEach(function(foId) {
-                            // Пропускаем удалённый оффер (он уже обработан выше)
-                            if (parseInt(foId) === parseInt(flowOfferId)) {
-                                return;
-                            }
-                            // Ищем span с share (не td с названием оффера)
-                            const shareSpan = $(`tr[data-flow-offer-id="${foId}"] span.font-medium`);
-                            if (shareSpan.length) {
-                                const oldShare = parseInt(shareSpan.text().replace('%', '')) || 0;
-                                const newShare = parseInt(data.all_shares[foId]) || 0;
-                                shareSpan.text(newShare + '%');
-                                // Подсвечиваем зелёным жирным, если значение изменилось
-                                if (oldShare !== newShare) {
-                                    shareSpan.addClass('text-green-600 font-bold');
-                                }
-                            }
-                        });
+                        updateShareValues(flowId, data.all_shares, flowOfferId);
                     }
                 } else {
                     showToast(data.error, 'error');
@@ -296,19 +282,7 @@ $(document).ready(function() {
                     
                     // Обновляем share для всех офферов в потоке
                     if (data.all_shares) {
-                        Object.keys(data.all_shares).forEach(function(foId) {
-                            // Ищем span с share (не td с названием оффера)
-                            const shareSpan = $(`tr[data-flow-offer-id="${foId}"] span.font-medium`);
-                            if (shareSpan.length) {
-                                const oldShare = parseInt(shareSpan.text().replace('%', '')) || 0;
-                                const newShare = parseInt(data.all_shares[foId]) || 0;
-                                shareSpan.text(newShare + '%');
-                                // Подсвечиваем зелёным жирным, если значение изменилось
-                                if (oldShare !== newShare) {
-                                    shareSpan.addClass('text-green-600 font-bold');
-                                }
-                            }
-                        });
+                        updateShareValues(flowId, data.all_shares);
                     }
                 } else {
                     // Откатываем визуальное состояние при ошибке
@@ -390,26 +364,23 @@ $(document).ready(function() {
             headers: {'X-CSRFToken': window.csrfToken},
             success: function(data) {
                 if (data.success) {
-                    // Убираем подсветку со всех share в потоке при отмене
-                    $(`.flow-container[data-flow-id="${flowId}"] .share-input`).removeClass('share-changed');
                     // Убираем зелёную подсветку с добавленных офферов при отмене
                     $(`.flow-container[data-flow-id="${flowId}"] .offer-name`).removeClass('text-green-600 font-bold').addClass('text-gray-900');
                     // Убираем зелёную подсветку с изменённых share при отмене
                     $(`.flow-container[data-flow-id="${flowId}"] span.font-medium`).removeClass('text-green-600 font-bold');
-                    // Возвращаем нормальный цвет удалённым офферам и включаем input
+                    // Возвращаем нормальный цвет удалённым офферам
                     $(`.flow-container[data-flow-id="${flowId}"] tr[data-removed="true"]`).each(function() {
                         $(this).find('.offer-name').removeClass('text-red-600 font-bold').addClass('text-gray-900');
-                        $(this).find('.share-input').prop('disabled', false);
                         $(this).removeAttr('data-removed');
                     });
                     location.reload();
                 } else {
-                    alert('Ошибка: ' + data.error);
+                    showToast(data.error, 'error');
                 }
             },
             error: function(xhr) {
                 const error = xhr.responseJSON?.error || 'Неизвестная ошибка';
-                alert('Ошибка: ' + error);
+                showToast(error, 'error');
             }
         });
     });

@@ -84,6 +84,8 @@
                 <thead class="bg-gray-50">
                     <tr>
                         <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Оффер</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Stats</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Trends</th>
                         <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Share (%)</th>
                         <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Состояние</th>
                         <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Действия</th>
@@ -94,6 +96,12 @@
                     <tr data-flow-offer-id="{{ flow_offer.id }}" {% if flow_offer.state == 'disabled' %}data-removed="true"{% endif %}>
                         <td class="px-6 py-4 whitespace-nowrap text-sm font-medium offer-name {% if flow_offer.state == 'disabled' %}text-red-600 font-bold{% else %}text-gray-900{% endif %}">
                             {{ flow_offer.offer.name }}
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                            <!-- Stats column - пусто на будущее -->
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                            <!-- Trends column - пусто на будущее -->
                         </td>
                         <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                             <div class="flex items-center space-x-2">
@@ -121,7 +129,7 @@
                     </tr>
                     {% empty %}
                     <tr>
-                        <td colspan="4" class="px-6 py-4 text-center text-gray-500">
+                        <td colspan="6" class="px-6 py-4 text-center text-gray-500">
                             Офферы не добавлены
                         </td>
                     </tr>

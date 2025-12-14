@@ -260,37 +260,6 @@ class ShareCalculator:
         return result
     
     @staticmethod
-    def get_max_share_for_pinning(flow_offers: List[FlowOffer], current_offer_id: int) -> int:
-        """
-        Вычисление максимального значения share для закрепления текущего оффера
-        
-        Правила:
-        - Каждый незакреплённый оффер (кроме текущего) должен иметь минимум MIN_SHARE_PERCENT%
-        - Максимум = 100 - (сумма всех закреплённых кроме текущего) - (количество незакреплённых кроме текущего * MIN_SHARE_PERCENT)
-        
-        Args:
-            flow_offers: Список всех FlowOffer объектов в потоке
-            current_offer_id: ID текущего оффера, для которого вычисляем максимум
-        
-        Returns:
-            Максимальное значение share для закрепления
-        """
-        # Разделяем на зафиксированные и незафиксированные
-        pinned = [fo for fo in flow_offers if fo.is_pinned and fo.state == 'active' and fo.id != current_offer_id]
-        unpinned = [fo for fo in flow_offers if not fo.is_pinned and fo.state == 'active' and fo.id != current_offer_id]
-        
-        # Сумма зафиксированных (кроме текущего)
-        pinned_sum = sum(fo.share for fo in pinned)
-        
-        # Минимум для незафиксированных (кроме текущего) = количество * MIN_SHARE_PERCENT%
-        unpinned_min = len(unpinned) * MIN_SHARE_PERCENT
-        
-        # Максимум для текущего оффера
-        max_share = 100 - pinned_sum - unpinned_min
-        
-        return max(0, max_share)  # Не может быть отрицательным
-    
-    @staticmethod
     def validate_shares(flow_offers: List[FlowOffer]) -> tuple[bool, Optional[str]]:
         """
         Валидация share в потоке
@@ -414,6 +383,36 @@ class KeitaroSyncService:
         except KeitaroAPIException as e:
             raise Exception(f'Ошибка синхронизации потоков: {str(e)}')
     
+    def _update_flow_offer(self, flow: Flow, offer: Offer, offer_data: Dict) -> FlowOffer:
+        """
+        Вспомогательный метод для обновления или создания FlowOffer
+        
+        Args:
+            flow: Объект Flow
+            offer: Объект Offer
+            offer_data: Данные оффера из Keitaro API
+        
+        Returns:
+            Объект FlowOffer
+        """
+        flow_offer, created = FlowOffer.objects.get_or_create(
+            flow=flow,
+            offer=offer,
+            defaults={
+                'share': offer_data.get('share', 0),
+                'state': offer_data.get('state', 'active'),
+                'keitaro_offer_stream_id': offer_data.get('id'),
+                'is_pinned': False,
+            }
+        )
+        if not created:
+            flow_offer.share = offer_data.get('share', 0)
+            flow_offer.state = offer_data.get('state', 'active')
+            flow_offer.keitaro_offer_stream_id = offer_data.get('id')
+            flow_offer.is_pinned = False
+            flow_offer.save(update_fields=['share', 'state', 'keitaro_offer_stream_id', 'is_pinned'])
+        return flow_offer
+    
     def _sync_flow_offers(self, flow: Flow, offers_data: List[Dict]):
         """
         Синхронизация офферов потока
@@ -459,48 +458,15 @@ class KeitaroSyncService:
             
             try:
                 offer = Offer.objects.get(keitaro_id=offer_id)
-                flow_offer, created = FlowOffer.objects.get_or_create(
-                    flow=flow,
-                    offer=offer,
-                    defaults={
-                        'share': offer_data.get('share', 0),
-                        'state': offer_data.get('state', 'active'),
-                        'keitaro_offer_stream_id': offer_data.get('id'),
-                        'is_pinned': False,  # Новые офферы по умолчанию не закреплены
-                    }
-                )
-                # Если оффер уже существует, обновляем share, state и сбрасываем is_pinned
-                if not created:
-                    flow_offer.share = offer_data.get('share', 0)
-                    flow_offer.state = offer_data.get('state', 'active')
-                    flow_offer.keitaro_offer_stream_id = offer_data.get('id')
-                    flow_offer.is_pinned = False  # При синхронизации все пины деактивируются
-                    flow_offer.save(update_fields=['share', 'state', 'keitaro_offer_stream_id', 'is_pinned'])
             except Offer.DoesNotExist:
-                # Оффер не найден в кэше, создаём placeholder
                 offer = Offer.objects.create(
                     keitaro_id=offer_id,
                     user=self.user,
                     name=f"Offer {offer_id}",
                     state='active'
                 )
-                flow_offer, created = FlowOffer.objects.get_or_create(
-                    flow=flow,
-                    offer=offer,
-                    defaults={
-                        'share': offer_data.get('share', 0),
-                        'state': offer_data.get('state', 'active'),
-                        'keitaro_offer_stream_id': offer_data.get('id'),
-                        'is_pinned': False,  # При синхронизации все пины деактивируются
-                    }
-                )
-                # Если оффер уже существует, обновляем share, state и сбрасываем is_pinned
-                if not created:
-                    flow_offer.share = offer_data.get('share', 0)
-                    flow_offer.state = offer_data.get('state', 'active')
-                    flow_offer.keitaro_offer_stream_id = offer_data.get('id')
-                    flow_offer.is_pinned = False  # При синхронизации все пины деактивируются
-                    flow_offer.save(update_fields=['share', 'state', 'keitaro_offer_stream_id', 'is_pinned'])
+            
+            self._update_flow_offer(flow, offer, offer_data)
     
     @transaction.atomic
     def sync_offers(self) -> int:

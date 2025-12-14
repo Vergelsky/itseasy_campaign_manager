@@ -107,16 +107,16 @@ $(document).ready(function() {
             },
             success: function(data) {
                 if (data.success) {
-                    alert(data.message);
-                    location.reload();
+                    showToast(data.message, 'success');
+                    setTimeout(() => location.reload(), 1000);
                 } else {
-                    alert('Ошибка: ' + data.error);
+                    showToast(data.error, 'error');
                     btn.prop('disabled', false).text('Синхронизировать с Keitaro');
                 }
             },
             error: function(xhr) {
                 const error = xhr.responseJSON?.error || 'Неизвестная ошибка';
-                alert('Ошибка: ' + error);
+                showToast(error, 'error');
                 btn.prop('disabled', false).text('Синхронизировать с Keitaro');
             }
         });
@@ -173,12 +173,12 @@ $(document).ready(function() {
                     });
                     
                     if (data.warning) {
-                        console.warn(data.warning);
+                        showToast(data.warning, 'warning');
                     }
                 }
             },
             error: function(xhr) {
-                console.error('Не удалось загрузить статистику');
+                showToast('Не удалось загрузить статистику', 'error');
             }
         });
     }

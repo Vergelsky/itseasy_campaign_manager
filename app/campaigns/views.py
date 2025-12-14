@@ -61,8 +61,7 @@ class CampaignDetailView(DetailView):
     
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        # Получаем потоки с офферами
-        # Сначала сортируем по наличию офферов (с офферами - в начале), затем по position
+        # Сортируем потоки: сначала по количеству офферов (убывание), затем по position
         flows = self.object.flows.prefetch_related('flow_offers__offer').annotate(
             offers_count=Count('flow_offers')
         ).order_by('-offers_count', 'position')
@@ -165,7 +164,7 @@ class AddOfferView(View):
                 'flow_offer_id': flow_offer.id,
                 'offer_name': offer.name,
                 'share': flow_offer.share,
-                'all_shares': updated_shares,  # Все обновленные share для потока
+                'all_shares': updated_shares,
             })
             
         except ValueError as e:
@@ -252,103 +251,6 @@ class TogglePinView(View):
                 'all_shares': updated_shares,
             })
             
-        except Exception as e:
-            return JsonResponse({'success': False, 'error': str(e)}, status=500)
-
-
-class UpdateShareView(View):
-    """AJAX: Обновление share оффера (не используется, оставлен для совместимости)"""
-    
-    def post(self, request, pk):
-        try:
-            flow_offer = get_object_or_404(FlowOffer, pk=pk)
-            share = request.POST.get('share')
-            is_pinned_param = request.POST.get('is_pinned')
-            
-            if share is None:
-                return JsonResponse({'success': False, 'error': 'Не указан share'}, status=400)
-            
-            try:
-                share = int(share)
-            except ValueError:
-                return JsonResponse({'success': False, 'error': 'Share должен быть числом'}, status=400)
-            
-            if share < 0 or share > 100:
-                return JsonResponse({'success': False, 'error': 'Share должен быть от 0 до 100'}, status=400)
-            
-            with transaction.atomic():
-                flow = flow_offer.flow
-                flow_offers = list(flow.flow_offers.filter(state='active'))
-                
-                # Определяем, нужно ли закреплять
-                # Если is_pinned не передан явно, но share изменён вручную - автоматически закрепляем
-                if is_pinned_param is None:
-                    # Автоматически закрепляем при ручном изменении share
-                    is_pinned = True
-                else:
-                    is_pinned = is_pinned_param == 'true'
-                
-                # Вычисляем максимальное значение для закрепления
-                max_share = ShareCalculator.get_max_share_for_pinning(flow_offers, flow_offer.id)
-                
-                # Если значение больше максимума - ограничиваем
-                share_limited = False
-                if is_pinned and share > max_share:
-                    share = max_share
-                    share_limited = True
-                
-                # Обновляем текущий оффер
-                flow_offer.share = share
-                flow_offer.is_pinned = is_pinned
-                flow_offer.save(update_fields=['share', 'is_pinned'])
-                
-                # Пересчитываем остальные незафиксированные
-                # Обновляем список, чтобы получить актуальные данные (включая обновлённый is_pinned)
-                flow_offers = list(flow.flow_offers.filter(state='active'))
-                # Обновляем объект в списке, чтобы recalculate_shares видел актуальные данные
-                for fo in flow_offers:
-                    if fo.id == flow_offer.id:
-                        fo.is_pinned = is_pinned
-                        fo.share = share
-                        break
-                
-                new_shares = ShareCalculator.recalculate_shares(flow_offers)
-                
-                # Обновляем share для всех офферов (используем пересчитанные значения)
-                updated_shares = {}
-                for fo in flow_offers:
-                    # Используем пересчитанное значение из new_shares для всех офферов
-                    new_share = new_shares[fo.id]
-                    fo.share = new_share
-                    fo.save(update_fields=['share'])
-                    updated_shares[fo.id] = new_share
-                
-                # Валидация
-                is_valid, error = ShareCalculator.validate_shares(flow_offers)
-                
-                if not is_valid:
-                    return JsonResponse({
-                        'success': False,
-                        'error': error,
-                        'is_valid': False,
-                    }, status=400)
-            
-            response_data = {
-                'success': True,
-                'message': 'Share обновлён',
-                'is_valid': True,
-                'all_shares': updated_shares,
-                'is_pinned': is_pinned,  # Возвращаем состояние фиксации
-            }
-            
-            if share_limited:
-                response_data['warning'] = 'Сумма не может быть больше 100%. Значение ограничено до максимума.'
-                response_data['limited_share'] = share
-            
-            return JsonResponse(response_data)
-            
-        except ValueError as e:
-            return JsonResponse({'success': False, 'error': str(e)}, status=400)
         except Exception as e:
             return JsonResponse({'success': False, 'error': str(e)}, status=500)
 
