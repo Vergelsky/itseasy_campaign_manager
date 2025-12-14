@@ -220,10 +220,6 @@ $(document).ready(function() {
             return;
         }
         
-        // Визуально отмечаем как удаляемый
-        row.find('.offer-name').addClass('text-removed');
-        row.find('.share-input').val(0).prop('disabled', true);
-        
         $.ajax({
             url: `/campaigns/flow-offer/${flowOfferId}/remove/`,
             method: 'POST',
@@ -231,22 +227,36 @@ $(document).ready(function() {
             success: function(data) {
                 if (data.success) {
                     markFlowAsEdited(flowId);
-                    showToast('Оффер удалён', 'success');
-                    // Удаляем строку из таблицы
-                    row.fadeOut(300, function() {
-                        $(this).remove();
-                    });
+                    showToast('Оффер помечен для удаления', 'success');
+                    // Отмечаем строку красным цветом (используя Tailwind)
+                    row.find('.offer-name').removeClass('text-gray-900 text-green-600 font-bold').addClass('text-red-600 font-bold');
+                    row.find('.share-input').val(0).prop('disabled', true);
+                    // Добавляем атрибут для идентификации удалённых строк
+                    row.attr('data-removed', 'true');
+                    
+                    // Обновляем share для всех офферов в потоке
+                    if (data.all_shares) {
+                        Object.keys(data.all_shares).forEach(function(flowOfferId) {
+                            const shareInput = $(`.share-input[data-flow-offer-id="${flowOfferId}"]`);
+                            if (shareInput.length && !shareInput.prop('disabled')) {
+                                const oldShare = shareInput.val();
+                                const newShare = data.all_shares[flowOfferId];
+                                // Обновляем только если значение изменилось
+                                if (oldShare != newShare) {
+                                    shareInput.val(newShare);
+                                    // Подсвечиваем измененные share (постоянно, до пуша)
+                                    shareInput.addClass('share-changed');
+                                }
+                            }
+                        });
+                    }
                 } else {
                     showToast(data.error, 'error');
-                    row.find('.offer-name').removeClass('text-removed');
-                    row.find('.share-input').prop('disabled', false);
                 }
             },
             error: function(xhr) {
                 const error = xhr.responseJSON?.error || 'Неизвестная ошибка';
                 showToast(error, 'error');
-                row.find('.offer-name').removeClass('text-removed');
-                row.find('.share-input').prop('disabled', false);
             }
         });
     });
@@ -348,6 +358,10 @@ $(document).ready(function() {
                     $(`.flow-container[data-flow-id="${flowId}"] .share-input`).removeClass('share-changed');
                     // Убираем зелёную подсветку с добавленных офферов после успешного пуша
                     $(`.flow-container[data-flow-id="${flowId}"] .offer-name`).removeClass('text-green-600 font-bold').addClass('text-gray-900');
+                    // Удаляем строки, помеченные для удаления
+                    $(`.flow-container[data-flow-id="${flowId}"] tr[data-removed="true"]`).fadeOut(300, function() {
+                        $(this).remove();
+                    });
                     setTimeout(() => location.reload(), 1000);
                 } else {
                     showToast(data.error, 'error');
@@ -380,6 +394,12 @@ $(document).ready(function() {
                     $(`.flow-container[data-flow-id="${flowId}"] .share-input`).removeClass('share-changed');
                     // Убираем зелёную подсветку с добавленных офферов при отмене
                     $(`.flow-container[data-flow-id="${flowId}"] .offer-name`).removeClass('text-green-600 font-bold').addClass('text-gray-900');
+                    // Возвращаем нормальный цвет удалённым офферам и включаем input
+                    $(`.flow-container[data-flow-id="${flowId}"] tr[data-removed="true"]`).each(function() {
+                        $(this).find('.offer-name').removeClass('text-red-600 font-bold').addClass('text-gray-900');
+                        $(this).find('.share-input').prop('disabled', false);
+                        $(this).removeAttr('data-removed');
+                    });
                     location.reload();
                 } else {
                     alert('Ошибка: ' + data.error);

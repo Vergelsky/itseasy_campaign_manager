@@ -91,8 +91,8 @@
                 </thead>
                 <tbody class="bg-white divide-y divide-gray-200 flow-offers-tbody">
                     {% for flow_offer in flow.flow_offers.all %}
-                    <tr data-flow-offer-id="{{ flow_offer.id }}">
-                        <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 offer-name">
+                    <tr data-flow-offer-id="{{ flow_offer.id }}" {% if flow_offer.state == 'disabled' %}data-removed="true"{% endif %}>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm font-medium offer-name {% if flow_offer.state == 'disabled' %}text-red-600 font-bold{% else %}text-gray-900{% endif %}">
                             {{ flow_offer.offer.name }}
                         </td>
                         <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
@@ -102,7 +102,8 @@
                                        value="{{ flow_offer.share }}"
                                        min="0" 
                                        max="100"
-                                       data-flow-offer-id="{{ flow_offer.id }}">
+                                       data-flow-offer-id="{{ flow_offer.id }}"
+                                       {% if flow_offer.state == 'disabled' %}disabled{% endif %}>
                                 <button class="pin-share-btn {% if flow_offer.is_pinned %}text-blue-600{% else %}text-gray-400{% endif %}"
                                         data-flow-offer-id="{{ flow_offer.id }}"
                                         data-pinned="{{ flow_offer.is_pinned|lower }}"

@@ -512,6 +512,9 @@ class KeitaroSyncService:
             
             self.client.update_stream(flow.keitaro_id, update_data)
             
+            # После успешной отправки удаляем офферы, помеченные как disabled
+            flow.flow_offers.filter(state='disabled').delete()
+            
             return True
             
         except (KeitaroAPIException, ValueError) as e:

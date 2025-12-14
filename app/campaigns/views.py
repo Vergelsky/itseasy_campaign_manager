@@ -183,10 +183,12 @@ class RemoveOfferView(View):
             flow = flow_offer.flow
             
             with transaction.atomic():
-                # Удаляем FlowOffer
-                flow_offer.delete()
+                # Помечаем FlowOffer как disabled вместо удаления
+                flow_offer.state = 'disabled'
+                flow_offer.share = 0
+                flow_offer.save(update_fields=['state', 'share'])
                 
-                # Пересчитываем share для оставшихся
+                # Пересчитываем share для оставшихся активных
                 flow_offers = list(flow.flow_offers.filter(state='active'))
                 if flow_offers:
                     new_shares = ShareCalculator.recalculate_shares(flow_offers)
@@ -197,7 +199,8 @@ class RemoveOfferView(View):
             
             return JsonResponse({
                 'success': True,
-                'message': 'Оффер удалён',
+                'message': 'Оффер помечен для удаления',
+                'all_shares': {fo.id: fo.share for fo in flow_offers} if flow_offers else {},
             })
             
         except Exception as e:
@@ -287,6 +290,9 @@ class CancelChangesView(View):
         try:
             flow = get_object_or_404(Flow, pk=flow_id)
             sync_service = KeitaroSyncService(request.user)
+            
+            # Возвращаем disabled офферы в active перед синхронизацией
+            flow.flow_offers.filter(state='disabled').update(state='active')
             
             # Перезагружаем данные из Keitaro
             sync_service.sync_streams(flow.campaign)
