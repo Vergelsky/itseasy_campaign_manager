@@ -209,10 +209,20 @@ $(document).ready(function() {
                 if (data.success) {
                     markFlowAsEdited(flowId);
                     showToast('Оффер помечен для удаления', 'success');
-                    // Отмечаем строку красным цветом (используя Tailwind)
-                    row.find('.offer-name').removeClass('text-gray-900 text-green-600 font-bold').addClass('text-red-600 font-bold');
+                    // Делаем название серым
+                    row.find('.offer-name').removeClass('text-gray-900 text-green-600 font-bold text-red-600').addClass('text-gray-400');
                     // Добавляем атрибут для идентификации удалённых строк
                     row.attr('data-removed', 'true');
+                    // Заменяем кнопку "Удалить" на "Вернуть"
+                    const actionCell = row.find('td:last-child');
+                    actionCell.html(`
+                        <button class="restore-offer-btn text-blue-600 hover:text-blue-900"
+                                data-flow-offer-id="${flowOfferId}">
+                            Вернуть
+                        </button>
+                    `);
+                    // Отключаем булавку для удалённого оффера
+                    row.find('.pin-share-btn').prop('disabled', true);
                     
                     // Обновляем share для удалённого оффера (должен стать 0)
                     const removedShareSpan = row.find('span.font-medium');
@@ -223,6 +233,50 @@ $(document).ready(function() {
                     // Обновляем share для всех остальных офферов в потоке
                     if (data.all_shares) {
                         updateShareValues(flowId, data.all_shares, flowOfferId);
+                    }
+                } else {
+                    showToast(data.error, 'error');
+                }
+            },
+            error: function(xhr) {
+                const error = xhr.responseJSON?.error || 'Неизвестная ошибка';
+                showToast(error, 'error');
+            }
+        });
+    });
+    
+    // Восстановление оффера
+    $(document).on('click', '.restore-offer-btn', function() {
+        const flowOfferId = $(this).data('flow-offer-id');
+        const flowId = $(this).closest('.flow-container').data('flow-id');
+        const row = $(this).closest('tr');
+        
+        $.ajax({
+            url: `/campaigns/flow-offer/${flowOfferId}/restore/`,
+            method: 'POST',
+            headers: {'X-CSRFToken': window.csrfToken},
+            success: function(data) {
+                if (data.success) {
+                    markFlowAsEdited(flowId);
+                    showToast('Оффер восстановлен', 'success');
+                    // Возвращаем нормальный цвет названия
+                    row.find('.offer-name').removeClass('text-gray-400').addClass('text-gray-900');
+                    // Убираем атрибут удалённой строки
+                    row.removeAttr('data-removed');
+                    // Заменяем кнопку "Вернуть" на "Удалить"
+                    const actionCell = row.find('td:last-child');
+                    actionCell.html(`
+                        <button class="remove-offer-btn text-red-600 hover:text-red-900"
+                                data-flow-offer-id="${flowOfferId}">
+                            Удалить
+                        </button>
+                    `);
+                    // Включаем булавку
+                    row.find('.pin-share-btn').prop('disabled', false);
+                    
+                    // Обновляем share для всех офферов в потоке
+                    if (data.all_shares) {
+                        updateShareValues(flowId, data.all_shares);
                     }
                 } else {
                     showToast(data.error, 'error');
@@ -332,10 +386,7 @@ $(document).ready(function() {
                     $(`.flow-container[data-flow-id="${flowId}"] .offer-name`).removeClass('text-green-600 font-bold').addClass('text-gray-900');
                     // Убираем зелёную подсветку с изменённых share после успешного пуша
                     $(`.flow-container[data-flow-id="${flowId}"] span.font-medium`).removeClass('text-green-600 font-bold');
-                    // Удаляем строки, помеченные для удаления
-                    $(`.flow-container[data-flow-id="${flowId}"] tr[data-removed="true"]`).fadeOut(300, function() {
-                        $(this).remove();
-                    });
+                    // После push удалённые офферы будут удалены из базы, поэтому при reload они исчезнут
                     setTimeout(() => location.reload(), 1000);
                 } else {
                     showToast(data.error, 'error');
@@ -368,10 +419,22 @@ $(document).ready(function() {
                     $(`.flow-container[data-flow-id="${flowId}"] .offer-name`).removeClass('text-green-600 font-bold').addClass('text-gray-900');
                     // Убираем зелёную подсветку с изменённых share при отмене
                     $(`.flow-container[data-flow-id="${flowId}"] span.font-medium`).removeClass('text-green-600 font-bold');
-                    // Возвращаем нормальный цвет удалённым офферам
+                    // Восстанавливаем удалённые офферы: возвращаем цвет, меняем кнопку, включаем булавку
                     $(`.flow-container[data-flow-id="${flowId}"] tr[data-removed="true"]`).each(function() {
-                        $(this).find('.offer-name').removeClass('text-red-600 font-bold').addClass('text-gray-900');
-                        $(this).removeAttr('data-removed');
+                        const row = $(this);
+                        const flowOfferId = row.data('flow-offer-id');
+                        row.find('.offer-name').removeClass('text-gray-400').addClass('text-gray-900');
+                        row.removeAttr('data-removed');
+                        // Заменяем кнопку "Вернуть" на "Удалить"
+                        const actionCell = row.find('td:last-child');
+                        actionCell.html(`
+                            <button class="remove-offer-btn text-red-600 hover:text-red-900"
+                                    data-flow-offer-id="${flowOfferId}">
+                                Удалить
+                            </button>
+                        `);
+                        // Включаем булавку
+                        row.find('.pin-share-btn').prop('disabled', false);
                     });
                     location.reload();
                 } else {

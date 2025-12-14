@@ -18,6 +18,7 @@ urlpatterns = [
     # AJAX endpoints для управления офферами
     path('flow/<int:flow_id>/add-offer/', views.AddOfferView.as_view(), name='add_offer'),
     path('flow-offer/<int:pk>/remove/', views.RemoveOfferView.as_view(), name='remove_offer'),
+    path('flow-offer/<int:pk>/restore/', views.RestoreOfferView.as_view(), name='restore_offer'),
     path('flow-offer/<int:pk>/toggle-pin/', views.TogglePinView.as_view(), name='toggle_pin'),
     path('flow/<int:flow_id>/push/', views.PushToKeitaroView.as_view(), name='push_to_keitaro'),
     path('flow/<int:flow_id>/cancel/', views.CancelChangesView.as_view(), name='cancel_changes'),

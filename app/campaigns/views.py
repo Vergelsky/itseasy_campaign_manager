@@ -210,6 +210,43 @@ class RemoveOfferView(View):
             return JsonResponse({'success': False, 'error': str(e)}, status=500)
 
 
+class RestoreOfferView(View):
+    """AJAX: Восстановление удалённого оффера"""
+    
+    def post(self, request, pk):
+        try:
+            flow_offer = get_object_or_404(FlowOffer, pk=pk)
+            flow = flow_offer.flow
+            
+            with transaction.atomic():
+                # Восстанавливаем FlowOffer
+                flow_offer.state = 'active'
+                flow_offer.save(update_fields=['state'])
+                
+                # Пересчитываем share для всех активных офферов
+                flow_offers = list(flow.flow_offers.filter(state='active'))
+                if flow_offers:
+                    new_shares = ShareCalculator.recalculate_shares(flow_offers)
+                    
+                    for fo in flow_offers:
+                        fo.share = new_shares[fo.id]
+                        fo.save(update_fields=['share'])
+                    
+                    # Формируем all_shares для всех активных офферов
+                    all_shares = {fo.id: fo.share for fo in flow_offers}
+                else:
+                    all_shares = {}
+            
+            return JsonResponse({
+                'success': True,
+                'message': 'Оффер восстановлен',
+                'all_shares': all_shares,
+            })
+            
+        except Exception as e:
+            return JsonResponse({'success': False, 'error': str(e)}, status=500)
+
+
 class TogglePinView(View):
     """AJAX: Переключение закрепления оффера"""
     

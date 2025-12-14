@@ -407,18 +407,31 @@ class KeitaroSyncService:
         )
         if not created:
             flow_offer.share = offer_data.get('share', 0)
-            flow_offer.state = offer_data.get('state', 'active')
             flow_offer.keitaro_offer_stream_id = offer_data.get('id')
-            flow_offer.is_pinned = False
-            flow_offer.save(update_fields=['share', 'state', 'keitaro_offer_stream_id', 'is_pinned'])
+            
+            # Если оффер приходит из Keitaro как активный, активируем его (даже если у нас он disabled)
+            keitaro_state = offer_data.get('state', 'active')
+            if keitaro_state == 'active':
+                flow_offer.state = 'active'
+                flow_offer.save(update_fields=['share', 'state', 'keitaro_offer_stream_id'])
+            else:
+                # Если в Keitaro оффер не активен, сохраняем его состояние только если у нас он тоже не disabled
+                # (disabled офферы остаются disabled, если в Keitaro они тоже не активны)
+                if flow_offer.state != 'disabled':
+                    flow_offer.state = keitaro_state
+                    flow_offer.save(update_fields=['share', 'state', 'keitaro_offer_stream_id'])
+                else:
+                    # Если у нас disabled, а в Keitaro тоже не активен - сохраняем только share и id
+                    flow_offer.save(update_fields=['share', 'keitaro_offer_stream_id'])
         return flow_offer
     
     def _sync_flow_offers(self, flow: Flow, offers_data: List[Dict]):
         """
         Синхронизация офферов потока
         
-        При синхронизации все пины (is_pinned) деактивируются, так как закрепление
-        - это только локальная функция, которая не синхронизируется с Keitaro.
+        При синхронизации сохраняются закрепления (is_pinned) существующих офферов,
+        так как закрепление - это локальная функция, которая не синхронизируется с Keitaro.
+        Новые офферы создаются с is_pinned=False.
         
         Args:
             flow: Объект Flow
@@ -444,13 +457,21 @@ class KeitaroSyncService:
                 except Exception:
                     pass
         
-        # Удаляем старые связи, которых нет в новых данных
+        # Помечаем как disabled активные офферы, которых нет в новых данных из Keitaro
+        # Это означает, что они были удалены в Keitaro
         current_offer_stream_ids = [o.get('id') for o in offers_data if o.get('id')]
-        FlowOffer.objects.filter(flow=flow).exclude(
+        removed_offers = FlowOffer.objects.filter(
+            flow=flow, 
+            state='active'
+        ).exclude(
             keitaro_offer_stream_id__in=current_offer_stream_ids
-        ).delete()
+        )
         
-        # Создаём/обновляем связи
+        # Помечаем их как disabled вместо удаления
+        if removed_offers.exists():
+            removed_offers.update(state='disabled', share=0)
+        
+        # Создаём/обновляем связи (используем share из Keitaro)
         for offer_data in offers_data:
             offer_id = offer_data.get('offer_id')
             if not offer_id:
@@ -531,8 +552,8 @@ class KeitaroSyncService:
             
             self.client.update_stream(flow.keitaro_id, update_data)
             
-            # После успешной отправки удаляем офферы, помеченные как disabled
-            flow.flow_offers.filter(state='disabled').delete()
+            # Удалённые офферы (state='disabled') остаются в базе для возможности восстановления
+            # Они не отправляются в Keitaro, но сохраняются локально
             
             return True
             
@@ -543,6 +564,8 @@ class KeitaroSyncService:
         """
         Сравнение локальных данных потока с Keitaro
         
+        Disabled офферы не учитываются при сравнении, так как они не синхронизируются с Keitaro.
+        
         Args:
             flow: Объект Flow
         
@@ -552,13 +575,13 @@ class KeitaroSyncService:
         try:
             stream_data = self.client.get_stream(flow.keitaro_id)
             
-            # Получаем локальные офферы
+            # Получаем только активные локальные офферы (disabled не учитываются)
             local_offers = {
                 fo.offer.keitaro_id: fo.share
                 for fo in flow.flow_offers.filter(state='active')
             }
             
-            # Получаем офферы из Keitaro
+            # Получаем только активные офферы из Keitaro
             keitaro_offers = {
                 o['offer_id']: o['share']
                 for o in stream_data.get('offers', [])
