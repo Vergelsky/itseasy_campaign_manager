@@ -77,10 +77,11 @@ $(document).ready(function() {
     // Автодополнение офферов
     $('.offer-autocomplete').on('input', function() {
         const input = $(this);
+        const container = input.parent(); // Контейнер с position: relative
         const query = input.val().trim();
         
         if (query.length < 2) {
-            input.next('.autocomplete-results').remove();
+            container.find('.autocomplete-results').remove();
             return;
         }
         
@@ -90,10 +91,10 @@ $(document).ready(function() {
             data: {q: query},
             success: function(data) {
                 // Удаляем старые результаты
-                input.next('.autocomplete-results').remove();
+                container.find('.autocomplete-results').remove();
                 
                 if (data.results && data.results.length > 0) {
-                    const resultsDiv = $('<div class="autocomplete-results absolute z-10 bg-white border border-gray-300 rounded-lg shadow-lg mt-1 max-h-60 overflow-y-auto"></div>');
+                    const resultsDiv = $('<div class="autocomplete-results"></div>');
                     
                     data.results.forEach(function(offer) {
                         const item = $('<div class="px-4 py-2 hover:bg-gray-100 cursor-pointer">' + offer.name + '</div>');
@@ -106,7 +107,8 @@ $(document).ready(function() {
                         resultsDiv.append(item);
                     });
                     
-                    input.after(resultsDiv);
+                    // Вставляем результаты в контейнер с position: relative
+                    container.append(resultsDiv);
                 }
             }
         });
@@ -323,7 +325,7 @@ $(document).ready(function() {
     
     // Скрыть автодополнение при клике вне
     $(document).on('click', function(e) {
-        if (!$(e.target).hasClass('offer-autocomplete')) {
+        if (!$(e.target).closest('.offer-autocomplete, .autocomplete-results').length) {
             $('.autocomplete-results').remove();
         }
     });
