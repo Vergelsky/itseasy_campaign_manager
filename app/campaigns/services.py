@@ -6,11 +6,7 @@ from typing import Dict, List, Optional, Any
 from django.conf import settings
 from django.db import transaction
 from .models import Campaign, Flow, Offer, FlowOffer
-
-
-class KeitaroAPIException(Exception):
-    """Исключение для ошибок API Keitaro"""
-    pass
+from config.exceptions import KeitaroAPIException, KeitaroAuthException, KeitaroConnectionException
 
 
 class KeitaroClient:
@@ -60,11 +56,11 @@ class KeitaroClient:
             
             # Обработка ошибок
             if response.status_code == 401:
-                raise KeitaroAPIException('Неверный API ключ или доступ запрещён')
+                raise KeitaroAuthException('Неверный API ключ или доступ запрещён')
             elif response.status_code == 404:
                 raise KeitaroAPIException(f'Ресурс не найден: {endpoint}')
             elif response.status_code >= 500:
-                raise KeitaroAPIException(f'Ошибка сервера Keitaro: {response.status_code}')
+                raise KeitaroConnectionException(f'Ошибка сервера Keitaro: {response.status_code}')
             elif response.status_code >= 400:
                 raise KeitaroAPIException(f'Ошибка запроса: {response.status_code} - {response.text}')
             
@@ -77,11 +73,11 @@ class KeitaroClient:
             return response.json()
             
         except requests.exceptions.Timeout:
-            raise KeitaroAPIException('Превышено время ожидания ответа от Keitaro')
+            raise KeitaroConnectionException('Превышено время ожидания ответа от Keitaro')
         except requests.exceptions.ConnectionError:
-            raise KeitaroAPIException('Не удалось подключиться к Keitaro')
+            raise KeitaroConnectionException('Не удалось подключиться к Keitaro')
         except requests.exceptions.RequestException as e:
-            raise KeitaroAPIException(f'Ошибка при запросе к Keitaro: {str(e)}')
+            raise KeitaroConnectionException(f'Ошибка при запросе к Keitaro: {str(e)}')
     
     def get_campaigns(self, offset: int = 0, limit: int = 100) -> List[Dict]:
         """
@@ -178,12 +174,23 @@ class KeitaroClient:
         
         Returns:
             True если ключ валиден, False иначе
+        
+        Raises:
+            KeitaroAuthException: Если API ключ неверный
+            KeitaroConnectionException: Если сервис Keitaro недоступен
         """
         try:
             self.get_campaigns(limit=1)
             return True
-        except KeitaroAPIException:
+        except KeitaroAuthException:
+            # Неверный API ключ - возвращаем False
             return False
+        except KeitaroConnectionException:
+            # Проблемы с подключением - пробрасываем исключение дальше
+            raise
+        except KeitaroAPIException:
+            # Другие ошибки API - пробрасываем как проблемы подключения
+            raise KeitaroConnectionException('Не удалось проверить API ключ из-за ошибки сервиса')
 
 
 class ShareCalculator:

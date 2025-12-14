@@ -4,7 +4,8 @@ from django.contrib import messages
 from django.conf import settings
 from .forms import LoginForm
 from .models import User
-from campaigns.services import KeitaroClient, KeitaroAPIException
+from campaigns.services import KeitaroClient
+from config.exceptions import KeitaroAPIException, KeitaroAuthException, KeitaroConnectionException
 
 
 class LoginView(View):
@@ -33,23 +34,44 @@ class LoginView(View):
         
         api_key = form.cleaned_data['api_key']
         
-        # Валидация API ключа через Keitaro
+        # Проверяем, существует ли пользователь с таким API ключом
         try:
-            client = KeitaroClient(settings.KEITARO_URL, api_key)
-            if not client.validate_api_key():
+            existing_user = User.objects.get(api_key=api_key)
+            # Если пользователь уже существует, пропускаем валидацию
+            # (предполагаем, что ключ был валидным при первом входе)
+            user = existing_user
+            created = False
+        except User.DoesNotExist:
+            # Пользователь не существует - валидируем API ключ через Keitaro
+            try:
+                client = KeitaroClient(settings.KEITARO_URL, api_key)
+                if not client.validate_api_key():
+                    messages.error(request, 'Неверный API ключ')
+                    return render(request, 'users/login.html', {'form': form})
+            except KeitaroAuthException:
+                # Неверный API ключ
                 messages.error(request, 'Неверный API ключ')
                 return render(request, 'users/login.html', {'form': form})
-        except KeitaroAPIException as e:
-            messages.error(request, f'Ошибка подключения к Keitaro: {str(e)}')
-            return render(request, 'users/login.html', {'form': form})
+            except KeitaroConnectionException as e:
+                # Проблемы с подключением к Keitaro
+                messages.error(request, f'Не удалось подключиться к Keitaro: {str(e)}')
+                return render(request, 'users/login.html', {'form': form})
+            except KeitaroAPIException as e:
+                # Другие ошибки API
+                messages.error(request, f'Ошибка при подключении к Keitaro: {str(e)}')
+                return render(request, 'users/login.html', {'form': form})
+            
+            # Создаем нового пользователя
+            user = User.objects.create(
+                api_key=api_key,
+                is_active=True,
+            )
+            created = True
         
-        # Создание или получение пользователя
-        user, created = User.objects.get_or_create(
-            api_key=api_key,
-            defaults={
-                'is_active': True,
-            }
-        )
+        # Проверяем, что пользователь активен
+        if not user.is_active:
+            messages.error(request, 'Ваш аккаунт деактивирован')
+            return render(request, 'users/login.html', {'form': form})
         
         # Сохранение в session
         request.session['user_id'] = user.id

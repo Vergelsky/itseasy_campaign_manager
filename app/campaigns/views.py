@@ -6,7 +6,8 @@ from django.contrib import messages
 from django.db import transaction
 from django.db.models import Count, Case, When, IntegerField
 from .models import Campaign, Flow, Offer, FlowOffer
-from .services import KeitaroSyncService, ShareCalculator, KeitaroAPIException
+from .services import KeitaroSyncService, ShareCalculator
+from config.exceptions import KeitaroAPIException
 
 
 class CampaignListView(ListView):
