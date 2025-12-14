@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>500 - Ошибка сервера</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+    {% load static %}
+    <link rel="stylesheet" href="{% static 'css/custom.css' %}">
+</head>
+<body class="bg-gray-50 min-h-screen">
+    <div class="min-h-screen flex items-center justify-center px-4 sm:px-6 lg:px-8">
+        <div class="max-w-md w-full text-center">
+            <div class="mb-8">
+                <h1 class="text-9xl font-bold text-red-300">500</h1>
+                <h2 class="text-3xl font-bold text-gray-900 mt-4">Ошибка сервера</h2>
+                <p class="text-gray-600 mt-4">
+                    Произошла внутренняя ошибка сервера. Мы уже работаем над её устранением.
+                </p>
+                {% if request.user.is_staff %}
+                <div class="mt-6 p-4 bg-red-50 border border-red-200 rounded-lg text-left">
+                    <p class="text-sm text-red-800 font-semibold mb-2">Детали ошибки (только для персонала):</p>
+                    <pre class="text-xs text-red-700 overflow-auto">{{ exception|default:"Неизвестная ошибка" }}</pre>
+                </div>
+                {% endif %}
+            </div>
+            
+            <div class="space-y-4">
+                <a href="{% url 'campaigns:campaign_list' %}" 
+                   class="inline-block bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-6 rounded-lg transition-colors">
+                    Вернуться на главную
+                </a>
+                <div>
+                    <button onclick="location.reload()" 
+                            class="text-gray-600 hover:text-gray-800 text-sm underline">
+                        Обновить страницу
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>
+

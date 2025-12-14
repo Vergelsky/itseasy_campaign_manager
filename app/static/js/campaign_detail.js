@@ -1,25 +1,9 @@
 /**
  * Campaign Detail JavaScript
  * Управление офферами в потоках кампании
+ * 
+ * Использует общую функцию showToast из toast.js
  */
-
-// Toast notification helper
-function showToast(message, type = 'success') {
-    const toast = $(`
-        <div class="toast ${type}">
-            <p class="font-semibold">${type === 'success' ? '✓ Успешно' : type === 'error' ? '✗ Ошибка' : '⚠ Внимание'}</p>
-            <p class="text-sm mt-1">${message}</p>
-        </div>
-    `);
-    
-    $('body').append(toast);
-    
-    setTimeout(() => {
-        toast.fadeOut(300, function() {
-            $(this).remove();
-        });
-    }, 3000);
-}
 
 $(document).ready(function() {
     let selectedOfferId = null;

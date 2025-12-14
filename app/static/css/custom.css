@@ -80,12 +80,20 @@
     bottom: 20px;
     right: 20px;
     min-width: 300px;
+    max-width: 500px;
     padding: 1rem;
     background: white;
     border-radius: 0.5rem;
     box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
     z-index: 1000;
-    animation: slideIn 0.3s ease-out;
+    transform: translateX(400px);
+    opacity: 0;
+    transition: all 0.3s ease-out;
+}
+
+.toast.show {
+    transform: translateX(0);
+    opacity: 1;
 }
 
 .toast.success {
@@ -98,6 +106,10 @@
 
 .toast.warning {
     border-left: 4px solid #F59E0B;
+}
+
+.toast.info {
+    border-left: 4px solid #3B82F6;
 }
 
 @keyframes slideIn {
