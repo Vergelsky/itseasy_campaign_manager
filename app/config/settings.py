@@ -152,5 +152,8 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 # Keitaro API settings
 KEITARO_URL = os.getenv('KEITARO_URL', '')
 
+# Share calculation settings
+MIN_SHARE_PERCENT = int(os.getenv('MIN_SHARE_PERCENT', '1'))  # Минимальный процент share для незакреплённых офферов
+
 # Custom User model
 AUTH_USER_MODEL = 'users.User'

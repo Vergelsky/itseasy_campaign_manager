@@ -214,7 +214,7 @@ class UpdateShareView(View):
         try:
             flow_offer = get_object_or_404(FlowOffer, pk=pk)
             share = request.POST.get('share')
-            is_pinned = request.POST.get('is_pinned') == 'true'
+            is_pinned_param = request.POST.get('is_pinned')
             
             if share is None:
                 return JsonResponse({'success': False, 'error': 'Не указан share'}, status=400)
@@ -228,19 +228,52 @@ class UpdateShareView(View):
                 return JsonResponse({'success': False, 'error': 'Share должен быть от 0 до 100'}, status=400)
             
             with transaction.atomic():
-                # Обновляем текущий
+                flow = flow_offer.flow
+                flow_offers = list(flow.flow_offers.filter(state='active'))
+                
+                # Определяем, нужно ли закреплять
+                # Если is_pinned не передан явно, но share изменён вручную - автоматически закрепляем
+                if is_pinned_param is None:
+                    # Автоматически закрепляем при ручном изменении share
+                    is_pinned = True
+                else:
+                    is_pinned = is_pinned_param == 'true'
+                
+                # Вычисляем максимальное значение для закрепления
+                max_share = ShareCalculator.get_max_share_for_pinning(flow_offers, flow_offer.id)
+                
+                # Если значение больше максимума - ограничиваем
+                share_limited = False
+                if is_pinned and share > max_share:
+                    share = max_share
+                    share_limited = True
+                
+                # Обновляем текущий оффер
                 flow_offer.share = share
                 flow_offer.is_pinned = is_pinned
-                flow_offer.save()
+                flow_offer.save(update_fields=['share', 'is_pinned'])
                 
                 # Пересчитываем остальные незафиксированные
-                flow_offers = list(flow_offer.flow.flow_offers.filter(state='active'))
+                # Обновляем список, чтобы получить актуальные данные (включая обновлённый is_pinned)
+                flow_offers = list(flow.flow_offers.filter(state='active'))
+                # Обновляем объект в списке, чтобы recalculate_shares видел актуальные данные
+                for fo in flow_offers:
+                    if fo.id == flow_offer.id:
+                        fo.is_pinned = is_pinned
+                        fo.share = share
+                        break
+                
                 new_shares = ShareCalculator.recalculate_shares(flow_offers)
                 
+                # Обновляем share для всех офферов
+                updated_shares = {}
+                # Добавляем текущий оффер с обновлённым share
+                updated_shares[flow_offer.id] = flow_offer.share
                 for fo in flow_offers:
                     if fo.id != flow_offer.id:  # Текущий уже обновили
                         fo.share = new_shares[fo.id]
                         fo.save(update_fields=['share'])
+                        updated_shares[fo.id] = fo.share
                 
                 # Валидация
                 is_valid, error = ShareCalculator.validate_shares(flow_offers)
@@ -252,11 +285,18 @@ class UpdateShareView(View):
                         'is_valid': False,
                     }, status=400)
             
-            return JsonResponse({
+            response_data = {
                 'success': True,
                 'message': 'Share обновлён',
                 'is_valid': True,
-            })
+                'all_shares': updated_shares,
+            }
+            
+            if share_limited:
+                response_data['warning'] = 'Сумма не может быть больше 100%. Значение ограничено до максимума.'
+                response_data['limited_share'] = share
+            
+            return JsonResponse(response_data)
             
         except ValueError as e:
             return JsonResponse({'success': False, 'error': str(e)}, status=400)

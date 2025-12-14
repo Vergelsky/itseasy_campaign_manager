@@ -8,6 +8,9 @@ from django.db import transaction
 from .models import Campaign, Flow, Offer, FlowOffer
 from config.exceptions import KeitaroAPIException, KeitaroAuthException, KeitaroConnectionException
 
+# Минимальный процент share для незакреплённых офферов
+MIN_SHARE_PERCENT = getattr(settings, 'MIN_SHARE_PERCENT', 1)
+
 
 class KeitaroClient:
     """Клиент для работы с Keitaro API"""
@@ -237,9 +240,9 @@ class ShareCalculator:
         base_share = available // len(unpinned)
         remainder = available % len(unpinned)
         
-        # Проверка: минимум 1% на оффер если возможно
-        if base_share < 1 and available >= len(unpinned):
-            base_share = 1
+        # Проверка: минимум MIN_SHARE_PERCENT% на оффер если возможно
+        if base_share < MIN_SHARE_PERCENT and available >= len(unpinned) * MIN_SHARE_PERCENT:
+            base_share = MIN_SHARE_PERCENT
             remainder = available - (base_share * len(unpinned))
         
         result = {}
@@ -255,6 +258,37 @@ class ShareCalculator:
             result[fo.id] = base_share + extra
         
         return result
+    
+    @staticmethod
+    def get_max_share_for_pinning(flow_offers: List[FlowOffer], current_offer_id: int) -> int:
+        """
+        Вычисление максимального значения share для закрепления текущего оффера
+        
+        Правила:
+        - Каждый незакреплённый оффер (кроме текущего) должен иметь минимум MIN_SHARE_PERCENT%
+        - Максимум = 100 - (сумма всех закреплённых кроме текущего) - (количество незакреплённых кроме текущего * MIN_SHARE_PERCENT)
+        
+        Args:
+            flow_offers: Список всех FlowOffer объектов в потоке
+            current_offer_id: ID текущего оффера, для которого вычисляем максимум
+        
+        Returns:
+            Максимальное значение share для закрепления
+        """
+        # Разделяем на зафиксированные и незафиксированные
+        pinned = [fo for fo in flow_offers if fo.is_pinned and fo.state == 'active' and fo.id != current_offer_id]
+        unpinned = [fo for fo in flow_offers if not fo.is_pinned and fo.state == 'active' and fo.id != current_offer_id]
+        
+        # Сумма зафиксированных (кроме текущего)
+        pinned_sum = sum(fo.share for fo in pinned)
+        
+        # Минимум для незафиксированных (кроме текущего) = количество * MIN_SHARE_PERCENT%
+        unpinned_min = len(unpinned) * MIN_SHARE_PERCENT
+        
+        # Максимум для текущего оффера
+        max_share = 100 - pinned_sum - unpinned_min
+        
+        return max(0, max_share)  # Не может быть отрицательным
     
     @staticmethod
     def validate_shares(flow_offers: List[FlowOffer]) -> tuple[bool, Optional[str]]:

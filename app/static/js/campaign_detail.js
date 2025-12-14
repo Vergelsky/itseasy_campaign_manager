@@ -266,7 +266,8 @@ $(document).ready(function() {
         const flowOfferId = $(this).data('flow-offer-id');
         const share = $(this).val();
         const flowId = $(this).closest('.flow-container').data('flow-id');
-        const isPinned = $(`.pin-share-btn[data-flow-offer-id="${flowOfferId}"]`).data('pinned');
+        const pinBtn = $(`.pin-share-btn[data-flow-offer-id="${flowOfferId}"]`);
+        const isPinned = pinBtn.data('pinned');
         const input = $(this);
         
         // Сохраняем предыдущее значение для отката при ошибке
@@ -283,12 +284,55 @@ $(document).ready(function() {
             headers: {'X-CSRFToken': window.csrfToken},
             data: {
                 share: share,
-                is_pinned: isPinned
+                // Не передаём is_pinned, чтобы view автоматически закреплял при ручном вводе
             },
             success: function(data) {
                 if (data.success && data.is_valid) {
                     markFlowAsEdited(flowId);
-                    showToast('Share обновлён', 'success');
+                    
+                    // Если значение было ограничено - показываем предупреждение
+                    if (data.warning) {
+                        showToast(data.warning, 'warning');
+                        // Обновляем значение в поле, если оно было ограничено
+                        if (data.limited_share !== undefined) {
+                            input.val(data.limited_share);
+                        }
+                    } else {
+                        showToast('Share обновлён', 'success');
+                    }
+                    
+                    // Автоматически закрепляем оффер (обновляем кнопку pin)
+                    pinBtn.data('pinned', 'true');
+                    pinBtn.removeClass('text-gray-400').addClass('text-blue-600');
+                    
+                    // Обновляем share для всех офферов в потоке
+                    if (data.all_shares) {
+                        Object.keys(data.all_shares).forEach(function(foId) {
+                            const shareInput = $(`.share-input[data-flow-offer-id="${foId}"]`);
+                            if (shareInput.length && !shareInput.prop('disabled')) {
+                                const foIdNum = parseInt(foId);
+                                const flowOfferIdNum = parseInt(flowOfferId);
+                                const oldShare = shareInput.val();
+                                const newShare = data.all_shares[foId];
+                                
+                                // Обновляем все офферы, включая текущий (если значение было ограничено)
+                                if (foIdNum == flowOfferIdNum) {
+                                    // Для текущего обновляем только если значение было ограничено
+                                    if (data.limited_share !== undefined && oldShare != newShare) {
+                                        shareInput.val(newShare);
+                                    }
+                                } else {
+                                    // Для остальных обновляем если значение изменилось
+                                    if (oldShare != newShare) {
+                                        shareInput.val(newShare);
+                                        // Подсвечиваем измененные share (постоянно, до пуша)
+                                        shareInput.addClass('share-changed');
+                                    }
+                                }
+                            }
+                        });
+                    }
+                    
                     // Подсветка остается до пуша в Keitaro
                 } else {
                     input.addClass('invalid-input');
