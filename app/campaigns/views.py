@@ -207,8 +207,53 @@ class RemoveOfferView(View):
             return JsonResponse({'success': False, 'error': str(e)}, status=500)
 
 
+class TogglePinView(View):
+    """AJAX: Переключение закрепления оффера"""
+    
+    def post(self, request, pk):
+        try:
+            flow_offer = get_object_or_404(FlowOffer, pk=pk)
+            flow = flow_offer.flow
+            
+            with transaction.atomic():
+                # Переключаем состояние закрепления
+                flow_offer.is_pinned = not flow_offer.is_pinned
+                flow_offer.save(update_fields=['is_pinned'])
+                
+                # Пересчитываем share для незакреплённых офферов
+                flow_offers = list(flow.flow_offers.filter(state='active'))
+                new_shares = ShareCalculator.recalculate_shares(flow_offers)
+                
+                # Обновляем share для всех офферов (закреплённые не меняются в recalculate_shares)
+                updated_shares = {}
+                for fo in flow_offers:
+                    fo.share = new_shares[fo.id]
+                    fo.save(update_fields=['share'])
+                    updated_shares[fo.id] = fo.share
+                
+                # Валидация
+                is_valid, error = ShareCalculator.validate_shares(flow_offers)
+                
+                if not is_valid:
+                    return JsonResponse({
+                        'success': False,
+                        'error': error,
+                        'is_valid': False,
+                    }, status=400)
+            
+            return JsonResponse({
+                'success': True,
+                'message': 'Состояние закрепления изменено',
+                'is_pinned': flow_offer.is_pinned,
+                'all_shares': updated_shares,
+            })
+            
+        except Exception as e:
+            return JsonResponse({'success': False, 'error': str(e)}, status=500)
+
+
 class UpdateShareView(View):
-    """AJAX: Обновление share оффера"""
+    """AJAX: Обновление share оффера (не используется, оставлен для совместимости)"""
     
     def post(self, request, pk):
         try:

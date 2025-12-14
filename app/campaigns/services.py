@@ -418,6 +418,9 @@ class KeitaroSyncService:
         """
         Синхронизация офферов потока
         
+        При синхронизации все пины (is_pinned) деактивируются, так как закрепление
+        - это только локальная функция, которая не синхронизируется с Keitaro.
+        
         Args:
             flow: Объект Flow
             offers_data: Список данных офферов из Keitaro
@@ -456,15 +459,23 @@ class KeitaroSyncService:
             
             try:
                 offer = Offer.objects.get(keitaro_id=offer_id)
-                FlowOffer.objects.update_or_create(
+                flow_offer, created = FlowOffer.objects.get_or_create(
                     flow=flow,
                     offer=offer,
                     defaults={
                         'share': offer_data.get('share', 0),
                         'state': offer_data.get('state', 'active'),
                         'keitaro_offer_stream_id': offer_data.get('id'),
+                        'is_pinned': False,  # Новые офферы по умолчанию не закреплены
                     }
                 )
+                # Если оффер уже существует, обновляем share, state и сбрасываем is_pinned
+                if not created:
+                    flow_offer.share = offer_data.get('share', 0)
+                    flow_offer.state = offer_data.get('state', 'active')
+                    flow_offer.keitaro_offer_stream_id = offer_data.get('id')
+                    flow_offer.is_pinned = False  # При синхронизации все пины деактивируются
+                    flow_offer.save(update_fields=['share', 'state', 'keitaro_offer_stream_id', 'is_pinned'])
             except Offer.DoesNotExist:
                 # Оффер не найден в кэше, создаём placeholder
                 offer = Offer.objects.create(
@@ -473,15 +484,23 @@ class KeitaroSyncService:
                     name=f"Offer {offer_id}",
                     state='active'
                 )
-                FlowOffer.objects.update_or_create(
+                flow_offer, created = FlowOffer.objects.get_or_create(
                     flow=flow,
                     offer=offer,
                     defaults={
                         'share': offer_data.get('share', 0),
                         'state': offer_data.get('state', 'active'),
                         'keitaro_offer_stream_id': offer_data.get('id'),
+                        'is_pinned': False,  # При синхронизации все пины деактивируются
                     }
                 )
+                # Если оффер уже существует, обновляем share, state и сбрасываем is_pinned
+                if not created:
+                    flow_offer.share = offer_data.get('share', 0)
+                    flow_offer.state = offer_data.get('state', 'active')
+                    flow_offer.keitaro_offer_stream_id = offer_data.get('id')
+                    flow_offer.is_pinned = False  # При синхронизации все пины деактивируются
+                    flow_offer.save(update_fields=['share', 'state', 'keitaro_offer_stream_id', 'is_pinned'])
     
     @transaction.atomic
     def sync_offers(self) -> int:

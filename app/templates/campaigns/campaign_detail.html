@@ -97,17 +97,12 @@
                         </td>
                         <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                             <div class="flex items-center space-x-2">
-                                <input type="number" 
-                                       class="share-input w-20 px-2 py-1 border border-gray-300 rounded"
-                                       value="{{ flow_offer.share }}"
-                                       min="0" 
-                                       max="100"
-                                       data-flow-offer-id="{{ flow_offer.id }}"
-                                       {% if flow_offer.state == 'disabled' %}disabled{% endif %}>
+                                <span class="font-medium">{{ flow_offer.share }}%</span>
                                 <button class="pin-share-btn {% if flow_offer.is_pinned %}text-blue-600{% else %}text-gray-400{% endif %}"
                                         data-flow-offer-id="{{ flow_offer.id }}"
                                         data-pinned="{{ flow_offer.is_pinned|lower }}"
-                                        title="Зафиксировать share">
+                                        title="{% if flow_offer.is_pinned %}Закреплён - нажмите чтобы раззакрепить{% else %}Не закреплён - нажмите чтобы закрепить{% endif %}"
+                                        {% if flow_offer.state == 'disabled' %}disabled{% endif %}>
                                     📌
                                 </button>
                             </div>
