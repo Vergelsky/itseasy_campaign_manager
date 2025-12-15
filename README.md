@@ -53,10 +53,8 @@ MIN_SHARE_PERCENT=1
 # Запустить контейнеры
 docker-compose up -d --build
 
-# Применить миграции
-docker-compose exec web python app/manage.py migrate
 
-# Создать суперпользователя для Django Admin
+# Создать суперпользователя для Django Admin (при необходимости)
 docker-compose exec web python app/manage.py createsuperuser
 ```
 
