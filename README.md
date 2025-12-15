@@ -40,7 +40,7 @@ ALLOWED_HOSTS=localhost,127.0.0.1
 POSTGRES_DB=campaign_manager
 POSTGRES_USER=postgres
 POSTGRES_PASSWORD=postgres
-POSTGRES_HOST=db
+POSTGRES_HOST=icm_db
 POSTGRES_PORT=5432
 
 KEITARO_URL=https://your-keitaro-instance.com
