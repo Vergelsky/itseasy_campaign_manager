@@ -1,13 +1,19 @@
 {% extends 'base.html' %}
+{% load static %}
 
 {% block title %}Кампании - Campaign Manager{% endblock %}
 
 {% block content %}
 <div class="mb-6 flex justify-between items-center">
     <h2 class="text-2xl font-bold text-gray-900">Рекламные кампании</h2>
-    <button id="sync-campaigns-btn" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded">
-        Синхронизировать с Keitaro
-    </button>
+    <div class="space-x-2">
+        <button id="create-campaign-btn" class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded">
+            Добавить кампанию
+        </button>
+        <button id="sync-campaigns-btn" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded">
+            Синхронизировать с Keitaro
+        </button>
+    </div>
 </div>
 
 {% if campaigns %}
@@ -84,108 +90,80 @@
 {% else %}
 <div class="bg-white shadow-md rounded-lg p-8 text-center">
     <p class="text-gray-500 text-lg mb-4">Кампании не найдены</p>
-    <button id="sync-campaigns-btn-empty" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded">
-        Синхронизировать с Keitaro
-    </button>
+    <div class="space-x-2">
+        <button id="create-campaign-btn-empty" class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded">
+            Добавить кампанию
+        </button>
+        <button id="sync-campaigns-btn-empty" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded">
+            Синхронизировать с Keitaro
+        </button>
+    </div>
 </div>
 {% endif %}
+
+<!-- Модальное окно для создания кампании -->
+<div id="create-campaign-modal" class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
+    <div class="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
+        <div class="mt-3">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-lg font-bold text-gray-900">Создать новую кампанию</h3>
+                <button id="close-modal-btn" class="text-gray-400 hover:text-gray-600">
+                    <span class="text-2xl">&times;</span>
+                </button>
+            </div>
+            
+            <form id="create-campaign-form">
+                <div class="mb-4">
+                    <label for="id_name" class="block text-sm font-medium text-gray-700 mb-1">Название кампании</label>
+                    <input type="text" name="name" id="id_name" required
+                           class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                           placeholder="Введите название кампании">
+                </div>
+                
+                <div class="mb-4">
+                    <label for="id_geo_codes" class="block text-sm font-medium text-gray-700 mb-1">
+                        Гео-коды стран
+                        <span class="text-xs text-gray-500">(через запятую, например: US,GB,DE)</span>
+                    </label>
+                    <input type="text" name="geo_codes" id="id_geo_codes" required
+                           class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                           placeholder="US,GB,DE,FR">
+                </div>
+                
+                <div class="mb-4">
+                    <label for="id_offer_name" class="block text-sm font-medium text-gray-700 mb-1">Оффер</label>
+                    <div class="relative">
+                        <input type="text" name="offer_name" id="id_offer_name" required
+                               class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 offer-autocomplete"
+                               placeholder="Начните вводить название оффера..." autocomplete="off">
+                        <input type="hidden" name="offer_id" id="id_offer_id">
+                    </div>
+                </div>
+                
+                <div class="flex justify-end space-x-2 mt-6">
+                    <button type="button" id="cancel-create-btn" class="px-4 py-2 bg-gray-300 hover:bg-gray-400 text-gray-800 rounded">
+                        Отмена
+                    </button>
+                    <button type="submit" class="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded">
+                        Создать
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
 {% endblock %}
 
 {% block extra_js %}
 <script>
-$(document).ready(function() {
-    // Синхронизация кампаний
-    $('#sync-campaigns-btn, #sync-campaigns-btn-empty').on('click', function() {
-        const btn = $(this);
-        btn.prop('disabled', true).text('Синхронизация...');
-        
-        $.ajax({
-            url: '{% url "campaigns:sync_campaigns" %}',
-            method: 'POST',
-            headers: {
-                'X-CSRFToken': '{{ csrf_token }}'
-            },
-            success: function(data) {
-                if (data.success) {
-                    showToast(data.message, 'success');
-                    setTimeout(() => location.reload(), 1000);
-                } else {
-                    showToast(data.error, 'error');
-                    btn.prop('disabled', false).text('Синхронизировать с Keitaro');
-                }
-            },
-            error: function(xhr) {
-                const error = xhr.responseJSON?.error || 'Неизвестная ошибка';
-                showToast(error, 'error');
-                btn.prop('disabled', false).text('Синхронизировать с Keitaro');
-            }
-        });
-    });
-    
-    // Загрузка статистики
-    function loadStats() {
-        const campaignIds = [];
-        $('tr[data-campaign-id]').each(function() {
-            campaignIds.push($(this).data('campaign-id'));
-        });
-        
-        if (campaignIds.length === 0) {
-            return;
-        }
-        
-        $.ajax({
-            url: '{% url "campaigns:campaign_stats" %}',
-            method: 'POST',
-            headers: {
-                'X-CSRFToken': '{{ csrf_token }}'
-            },
-            data: {
-                'campaign_ids[]': campaignIds
-            },
-            success: function(data) {
-                if (data.success && data.stats) {
-                    // Обновляем статистику в таблице
-                    $.each(data.stats, function(campaignId, stats) {
-                        const row = $(`tr[data-campaign-id="${campaignId}"]`);
-                        row.find('.stat-clicks').text(stats.clicks || 0);
-                        row.find('.stat-conversions').text(stats.conversions || 0);
-                        row.find('.stat-cr').text((stats.cr || 0).toFixed(2));
-                        row.find('.stat-revenue').text('$' + (stats.revenue || 0).toFixed(2));
-                        row.find('.stat-cost').text('$' + (stats.cost || 0).toFixed(2));
-                        
-                        const profit = stats.profit || 0;
-                        const profitCell = row.find('.stat-profit');
-                        profitCell.text('$' + profit.toFixed(2));
-                        if (profit > 0) {
-                            profitCell.removeClass('text-gray-500').addClass('text-green-600 font-semibold');
-                        } else if (profit < 0) {
-                            profitCell.removeClass('text-gray-500').addClass('text-red-600 font-semibold');
-                        }
-                        
-                        const roi = stats.roi || 0;
-                        const roiCell = row.find('.stat-roi');
-                        roiCell.text(roi.toFixed(2));
-                        if (roi > 0) {
-                            roiCell.removeClass('text-gray-500').addClass('text-green-600 font-semibold');
-                        } else if (roi < 0) {
-                            roiCell.removeClass('text-gray-500').addClass('text-red-600 font-semibold');
-                        }
-                    });
-                    
-                    if (data.warning) {
-                        showToast(data.warning, 'warning');
-                    }
-                }
-            },
-            error: function(xhr) {
-                showToast('Не удалось загрузить статистику', 'error');
-            }
-        });
-    }
-    
-    // Загружаем статистику при загрузке страницы
-    loadStats();
-});
+// Данные для JS
+window.csrfToken = '{{ csrf_token }}';
+window.createCampaignUrl = '{% url "campaigns:create_campaign" %}';
+window.offerAutocompleteUrl = '{% url "campaigns:offer_autocomplete" %}';
+window.syncCampaignsUrl = '{% url "campaigns:sync_campaigns" %}';
+window.campaignStatsUrl = '{% url "campaigns:campaign_stats" %}';
+window.campaignDetailUrlTemplate = '{% url "campaigns:campaign_detail" 0 %}';
 </script>
+<script src="{% static 'js/campaign_list.js' %}"></script>
 {% endblock %}
 

@@ -1,296 +1,13 @@
 """
-Сервисы для работы с Keitaro API и бизнес-логикой
+Сервис для синхронизации данных между БД и Keitaro
 """
-import requests
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Any
 from django.conf import settings
 from django.db import transaction
-from .models import Campaign, Flow, Offer, FlowOffer
-from config.exceptions import KeitaroAPIException, KeitaroAuthException, KeitaroConnectionException
-
-# Минимальный процент share для незакреплённых офферов
-MIN_SHARE_PERCENT = getattr(settings, 'MIN_SHARE_PERCENT', 1)
-
-
-class KeitaroClient:
-    """Клиент для работы с Keitaro API"""
-    
-    def __init__(self, base_url: str, api_key: str):
-        """
-        Инициализация клиента
-        
-        Args:
-            base_url: URL Keitaro инстанса
-            api_key: API ключ для аутентификации
-        """
-        self.base_url = base_url.rstrip('/')
-        self.api_key = api_key
-        self.api_base = f"{self.base_url}/admin_api/v1"
-        self.headers = {
-            'Api-Key': self.api_key,
-            'Content-Type': 'application/json',
-        }
-    
-    def _make_request(self, method: str, endpoint: str, **kwargs) -> Any:
-        """
-        Выполнение HTTP запроса к API
-        
-        Args:
-            method: HTTP метод (GET, POST, PUT, DELETE)
-            endpoint: API endpoint (без /admin_api/v1)
-            **kwargs: Дополнительные параметры для requests
-        
-        Returns:
-            JSON ответ от API
-        
-        Raises:
-            KeitaroAPIException: При ошибках API
-        """
-        url = f"{self.api_base}/{endpoint.lstrip('/')}"
-        
-        try:
-            response = requests.request(
-                method=method,
-                url=url,
-                headers=self.headers,
-                timeout=30,
-                **kwargs
-            )
-            
-            # Обработка ошибок
-            if response.status_code == 401:
-                raise KeitaroAuthException('Неверный API ключ или доступ запрещён')
-            elif response.status_code == 404:
-                raise KeitaroAPIException(f'Ресурс не найден: {endpoint}')
-            elif response.status_code >= 500:
-                raise KeitaroConnectionException(f'Ошибка сервера Keitaro: {response.status_code}')
-            elif response.status_code >= 400:
-                raise KeitaroAPIException(f'Ошибка запроса: {response.status_code} - {response.text}')
-            
-            response.raise_for_status()
-            
-            # Некоторые endpoints возвращают пустой ответ
-            if not response.content:
-                return {}
-            
-            return response.json()
-            
-        except requests.exceptions.Timeout:
-            raise KeitaroConnectionException('Превышено время ожидания ответа от Keitaro')
-        except requests.exceptions.ConnectionError:
-            raise KeitaroConnectionException('Не удалось подключиться к Keitaro')
-        except requests.exceptions.RequestException as e:
-            raise KeitaroConnectionException(f'Ошибка при запросе к Keitaro: {str(e)}')
-    
-    def get_campaigns(self, offset: int = 0, limit: int = 100) -> List[Dict]:
-        """
-        Получение списка кампаний
-        
-        Args:
-            offset: Смещение для пагинации
-            limit: Количество записей
-        
-        Returns:
-            Список кампаний
-        """
-        params = {}
-        if offset:
-            params['offset'] = offset
-        if limit:
-            params['limit'] = limit
-        
-        return self._make_request('GET', 'campaigns', params=params)
-    
-    def get_campaign(self, campaign_id: int) -> Dict:
-        """
-        Получение деталей кампании
-        
-        Args:
-            campaign_id: ID кампании в Keitaro
-        
-        Returns:
-            Данные кампании
-        """
-        return self._make_request('GET', f'campaigns/{campaign_id}')
-    
-    def get_streams(self, campaign_id: int) -> List[Dict]:
-        """
-        Получение потоков (streams) кампании
-        
-        Args:
-            campaign_id: ID кампании в Keitaro
-        
-        Returns:
-            Список потоков с офферами
-        """
-        return self._make_request('GET', f'campaigns/{campaign_id}/streams')
-    
-    def get_stream(self, stream_id: int) -> Dict:
-        """
-        Получение деталей потока
-        
-        Args:
-            stream_id: ID потока в Keitaro
-        
-        Returns:
-            Данные потока
-        """
-        return self._make_request('GET', f'streams/{stream_id}')
-    
-    def update_stream(self, stream_id: int, data: Dict) -> Dict:
-        """
-        Обновление потока (включая offers)
-        
-        Args:
-            stream_id: ID потока в Keitaro
-            data: Данные для обновления
-        
-        Returns:
-            Обновлённые данные потока
-        """
-        return self._make_request('PUT', f'streams/{stream_id}', json=data)
-    
-    def get_offers(self) -> List[Dict]:
-        """
-        Получение списка всех офферов
-        
-        Returns:
-            Список офферов
-        """
-        return self._make_request('GET', 'offers')
-    
-    def get_report(self, params: Dict) -> Dict:
-        """
-        Построение отчёта (для статистики)
-        
-        Args:
-            params: Параметры отчёта (columns, metrics, filters, range)
-        
-        Returns:
-            Данные отчёта
-        """
-        return self._make_request('POST', 'report/build', json=params)
-    
-    def validate_api_key(self) -> bool:
-        """
-        Проверка валидности API ключа
-        
-        Returns:
-            True если ключ валиден, False иначе
-        
-        Raises:
-            KeitaroAuthException: Если API ключ неверный
-            KeitaroConnectionException: Если сервис Keitaro недоступен
-        """
-        try:
-            self.get_campaigns(limit=1)
-            return True
-        except KeitaroAuthException:
-            # Неверный API ключ - возвращаем False
-            return False
-        except KeitaroConnectionException:
-            # Проблемы с подключением - пробрасываем исключение дальше
-            raise
-        except KeitaroAPIException:
-            # Другие ошибки API - пробрасываем как проблемы подключения
-            raise KeitaroConnectionException('Не удалось проверить API ключ из-за ошибки сервиса')
-
-
-class ShareCalculator:
-    """Калькулятор для пересчёта share офферов в потоке"""
-    
-    @staticmethod
-    def recalculate_shares(flow_offers: List[FlowOffer]) -> Dict[int, int]:
-        """
-        Пересчёт share для офферов в потоке
-        
-        Правила:
-        - Сумма всех share должна быть 100%
-        - Зафиксированные (pinned) share не изменяются
-        - Незафиксированные делятся равномерно на оставшиеся проценты
-        
-        Args:
-            flow_offers: Список FlowOffer объектов
-        
-        Returns:
-            Dict с новыми значениями {flow_offer_id: new_share}
-        """
-        if not flow_offers:
-            return {}
-        
-        # Разделяем на зафиксированные и незафиксированные
-        pinned = [fo for fo in flow_offers if fo.is_pinned and fo.state == 'active']
-        unpinned = [fo for fo in flow_offers if not fo.is_pinned and fo.state == 'active']
-        
-        # Сумма зафиксированных
-        pinned_sum = sum(fo.share for fo in pinned)
-        
-        # Проверка: сумма зафиксированных не может быть >= 100
-        if pinned_sum >= 100:
-            raise ValueError('Сумма зафиксированных share >= 100%')
-        
-        # Доступные проценты для распределения
-        available = 100 - pinned_sum
-        
-        # Если нет незафиксированных, ничего не делаем
-        if not unpinned:
-            return {fo.id: fo.share for fo in pinned}
-        
-        # Равномерное распределение
-        base_share = available // len(unpinned)
-        remainder = available % len(unpinned)
-        
-        # Проверка: минимум MIN_SHARE_PERCENT% на оффер если возможно
-        if base_share < MIN_SHARE_PERCENT and available >= len(unpinned) * MIN_SHARE_PERCENT:
-            base_share = MIN_SHARE_PERCENT
-            remainder = available - (base_share * len(unpinned))
-        
-        result = {}
-        
-        # Зафиксированные не меняются
-        for fo in pinned:
-            result[fo.id] = fo.share
-        
-        # Распределяем между незафиксированными
-        for i, fo in enumerate(unpinned):
-            # Первым офферам добавляем остаток
-            extra = 1 if i < remainder else 0
-            result[fo.id] = base_share + extra
-        
-        return result
-    
-    @staticmethod
-    def validate_shares(flow_offers: List[FlowOffer]) -> tuple[bool, Optional[str]]:
-        """
-        Валидация share в потоке
-        
-        Args:
-            flow_offers: Список FlowOffer объектов
-        
-        Returns:
-            (is_valid, error_message)
-        """
-        if not flow_offers:
-            return True, None
-        
-        active_offers = [fo for fo in flow_offers if fo.state == 'active']
-        
-        if not active_offers:
-            return True, None
-        
-        # Проверка суммы
-        total = sum(fo.share for fo in active_offers)
-        if total != 100:
-            return False, f'Сумма share должна быть 100%, текущая: {total}%'
-        
-        # Проверка минимума
-        for fo in active_offers:
-            if fo.share < 0:
-                return False, f'Share не может быть отрицательным'
-            if fo.share > 100:
-                return False, f'Share не может быть больше 100%'
-        
-        return True, None
+from ..models import Campaign, Flow, Offer, FlowOffer
+from config.exceptions import KeitaroAPIException
+from .client import KeitaroClient
+from .calculator import ShareCalculator
 
 
 class KeitaroSyncService:
@@ -311,11 +28,16 @@ class KeitaroSyncService:
         """
         Синхронизация кампаний из Keitaro в БД
         
+        Кампании, которых нет в Keitaro, помечаются как 'deleted'.
+        
         Returns:
             Количество синхронизированных кампаний
         """
         try:
             campaigns_data = self.client.get_campaigns()
+            
+            # Получаем список всех keitaro_id из Keitaro
+            keitaro_campaign_ids = {camp_data['id'] for camp_data in campaigns_data}
             
             synced_count = 0
             for camp_data in campaigns_data:
@@ -341,6 +63,10 @@ class KeitaroSyncService:
                     )
                 
                 synced_count += 1
+            
+            # Помечаем как 'deleted' все кампании, которых нет в Keitaro
+            deleted_campaigns = Campaign.objects.exclude(keitaro_id__in=keitaro_campaign_ids)
+            deleted_count = deleted_campaigns.update(state='deleted')
             
             return synced_count
             

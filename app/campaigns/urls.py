@@ -15,6 +15,9 @@ urlpatterns = [
     path('<int:pk>/check-sync/', views.CheckSyncView.as_view(), name='check_sync'),
     path('sync-campaigns/', views.SyncCampaignsView.as_view(), name='sync_campaigns'),
     
+    # Создание кампании
+    path('create/', views.CreateCampaignView.as_view(), name='create_campaign'),
+    
     # AJAX endpoints для управления офферами
     path('flow/<int:flow_id>/add-offer/', views.AddOfferView.as_view(), name='add_offer'),
     path('flow-offer/<int:pk>/remove/', views.RemoveOfferView.as_view(), name='remove_offer'),

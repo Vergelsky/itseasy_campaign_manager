@@ -1,116 +1,13 @@
 /**
- * Campaign Detail JavaScript
- * Управление офферами в потоках кампании
+ * Offer Handlers - Обработчики для управления офферами
  */
 
 $(document).ready(function() {
-    let selectedOfferId = null;
-    
-    // Функция для обновления значений share в UI
-    function updateShareValues(flowId, allShares, excludeId = null) {
-        if (!allShares) return;
-        Object.keys(allShares).forEach(function(foId) {
-            if (excludeId && parseInt(foId) === parseInt(excludeId)) return;
-            const shareSpan = $(`tr[data-flow-offer-id="${foId}"] span.font-medium`);
-            if (shareSpan.length) {
-                const oldShare = parseInt(shareSpan.text().replace('%', '')) || 0;
-                const newShare = parseInt(allShares[foId]) || 0;
-                shareSpan.text(newShare + '%');
-                if (oldShare !== newShare) {
-                    shareSpan.addClass('text-green-600 font-bold');
-                }
-            }
-        });
-    }
-    
-    // Fetch streams from Keitaro
-    $('#fetch-streams-btn').on('click', function() {
-        const btn = $(this);
-        const originalText = btn.text();
-        btn.prop('disabled', true).html('Загрузка... <span class="spinner"></span>');
-        
-        $.ajax({
-            url: `/campaigns/${window.campaignId}/fetch-streams/`,
-            method: 'POST',
-            headers: {'X-CSRFToken': window.csrfToken},
-            success: function(data) {
-                if (data.success) {
-                    showToast(data.message, 'success');
-                    setTimeout(() => location.reload(), 1000);
-                } else {
-                    showToast(data.error, 'error');
-                    btn.prop('disabled', false).text(originalText);
-                }
-            },
-            error: function(xhr) {
-                const error = xhr.responseJSON?.error || 'Неизвестная ошибка';
-                showToast(error, 'error');
-                btn.prop('disabled', false).text(originalText);
-            }
-        });
-    });
-    
-    // Проверка синхронизации с Keitaro
-    function checkSync() {
-        $.ajax({
-            url: `/campaigns/${window.campaignId}/check-sync/`,
-            method: 'GET',
-            success: function(data) {
-                if (data.success && data.has_differences) {
-                    $('#sync-warning').removeClass('hidden');
-                }
-            }
-        });
-    }
-    
-    // Проверяем синхронизацию при загрузке
-    checkSync();
-    
-    // Автодополнение офферов
-    $('.offer-autocomplete').on('input', function() {
-        const input = $(this);
-        const container = input.parent(); // Контейнер с position: relative
-        const query = input.val().trim();
-        
-        if (query.length < 2) {
-            container.find('.autocomplete-results').remove();
-            return;
-        }
-        
-        $.ajax({
-            url: '/campaigns/offers/autocomplete/',
-            method: 'GET',
-            data: {q: query},
-            success: function(data) {
-                // Удаляем старые результаты
-                container.find('.autocomplete-results').remove();
-                
-                if (data.results && data.results.length > 0) {
-                    const resultsDiv = $('<div class="autocomplete-results"></div>');
-                    
-                    data.results.forEach(function(offer) {
-                        const item = $('<div class="px-4 py-2 hover:bg-gray-100 cursor-pointer">' + offer.name + '</div>');
-                        item.on('click', function() {
-                            input.val(offer.name);
-                            input.data('selected-offer-id', offer.id);
-                            selectedOfferId = offer.id;
-                            resultsDiv.remove();
-                        });
-                        resultsDiv.append(item);
-                    });
-                    
-                    // Вставляем результаты в контейнер с position: relative
-                    container.append(resultsDiv);
-                }
-            }
-        });
-    });
-    
     // Добавление оффера
     $('.add-offer-btn').on('click', function() {
         const flowId = $(this).data('flow-id');
         const input = $(`.offer-autocomplete[data-flow-id="${flowId}"]`);
-        const offerId = input.data('selected-offer-id') || selectedOfferId;
+        const offerId = input.data('selected-offer-id') || window.selectedOfferId;
         
         if (!offerId) {
             showToast('Пожалуйста, выберите оффер из списка', 'warning');
@@ -131,7 +28,7 @@ $(document).ready(function() {
                     showToast('Оффер добавлен', 'success');
                     // Очищаем поле ввода
                     input.val('').data('selected-offer-id', null);
-                    selectedOfferId = null;
+                    window.selectedOfferId = null;
                     btn.prop('disabled', false).text('Добавить');
                     // Добавляем строку в таблицу динамически
                     const tbody = $(`.flow-container[data-flow-id="${flowId}"] .flow-offers-tbody`);
@@ -368,98 +265,4 @@ $(document).ready(function() {
             }
         });
     });
-    
-    // Push to Keitaro
-    $(document).on('click', '.push-flow-btn', function() {
-        const flowId = $(this).closest('.flow-container').data('flow-id');
-        const btn = $(this);
-        btn.prop('disabled', true).html('Отправка... <span class="spinner"></span>');
-        
-        $.ajax({
-            url: `/campaigns/flow/${flowId}/push/`,
-            method: 'POST',
-            headers: {'X-CSRFToken': window.csrfToken},
-            success: function(data) {
-                if (data.success) {
-                    showToast(data.message, 'success');
-                    // Убираем зелёную подсветку с добавленных офферов после успешного пуша
-                    $(`.flow-container[data-flow-id="${flowId}"] .offer-name`).removeClass('text-green-600 font-bold').addClass('text-gray-900');
-                    // Убираем зелёную подсветку с изменённых share после успешного пуша
-                    $(`.flow-container[data-flow-id="${flowId}"] span.font-medium`).removeClass('text-green-600 font-bold');
-                    // После push удалённые офферы будут удалены из базы, поэтому при reload они исчезнут
-                    setTimeout(() => location.reload(), 1000);
-                } else {
-                    showToast(data.error, 'error');
-                    btn.prop('disabled', false).text('Push to Keitaro');
-                }
-            },
-            error: function(xhr) {
-                const error = xhr.responseJSON?.error || 'Неизвестная ошибка';
-                showToast(error, 'error');
-                btn.prop('disabled', false).text('Push to Keitaro');
-            }
-        });
-    });
-    
-    // Cancel changes
-    $(document).on('click', '.cancel-flow-btn', function() {
-        const flowId = $(this).closest('.flow-container').data('flow-id');
-        
-        if (!confirm('Отменить все изменения?')) {
-            return;
-        }
-        
-        $.ajax({
-            url: `/campaigns/flow/${flowId}/cancel/`,
-            method: 'POST',
-            headers: {'X-CSRFToken': window.csrfToken},
-            success: function(data) {
-                if (data.success) {
-                    // Убираем зелёную подсветку с добавленных офферов при отмене
-                    $(`.flow-container[data-flow-id="${flowId}"] .offer-name`).removeClass('text-green-600 font-bold').addClass('text-gray-900');
-                    // Убираем зелёную подсветку с изменённых share при отмене
-                    $(`.flow-container[data-flow-id="${flowId}"] span.font-medium`).removeClass('text-green-600 font-bold');
-                    // Восстанавливаем удалённые офферы: возвращаем цвет, меняем кнопку, включаем булавку
-                    $(`.flow-container[data-flow-id="${flowId}"] tr[data-removed="true"]`).each(function() {
-                        const row = $(this);
-                        const flowOfferId = row.data('flow-offer-id');
-                        row.find('.offer-name').removeClass('text-gray-400').addClass('text-gray-900');
-                        row.removeAttr('data-removed');
-                        // Заменяем кнопку "Вернуть" на "Удалить"
-                        const actionCell = row.find('td:last-child');
-                        actionCell.html(`
-                            <button class="remove-offer-btn text-red-600 hover:text-red-900"
-                                    data-flow-offer-id="${flowOfferId}">
-                                Удалить
-                            </button>
-                        `);
-                        // Включаем булавку
-                        row.find('.pin-share-btn').prop('disabled', false);
-                    });
-                    location.reload();
-                } else {
-                    showToast(data.error, 'error');
-                }
-            },
-            error: function(xhr) {
-                const error = xhr.responseJSON?.error || 'Неизвестная ошибка';
-                showToast(error, 'error');
-            }
-        });
-    });
-    
-    // Отметить поток как редактированный
-    function markFlowAsEdited(flowId) {
-        const flowContainer = $(`.flow-container[data-flow-id="${flowId}"]`);
-        flowContainer.addClass('edited-flow');
-        flowContainer.find('.flow-actions').show();
-    }
-    
-    // Скрыть автодополнение при клике вне
-    $(document).on('click', function(e) {
-        if (!$(e.target).closest('.offer-autocomplete, .autocomplete-results').length) {
-            $('.autocomplete-results').remove();
-        }
-    });
 });
-

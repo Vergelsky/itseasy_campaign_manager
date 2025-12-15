@@ -157,11 +157,16 @@
 {% endblock %}
 
 {% block extra_js %}
-<script src="{% static 'js/campaign_detail.js' %}"></script>
+<!-- Campaign Detail JavaScript Modules -->
+<script src="{% static 'js/campaign_detail/ui_utils.js' %}"></script>
+<script src="{% static 'js/campaign_detail/autocomplete.js' %}"></script>
+<script src="{% static 'js/campaign_detail/sync_handlers.js' %}"></script>
+<script src="{% static 'js/campaign_detail/offer_handlers.js' %}"></script>
 <script>
 // Данные для JS
 window.campaignId = {{ campaign.id }};
 window.csrfToken = '{{ csrf_token }}';
+window.selectedOfferId = null;
 </script>
 {% endblock %}
 
